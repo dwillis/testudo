@@ -17,7 +17,8 @@ output.writerow([
     'term',
     'department',
     'instructors',
-    'seats'
+    'seats',
+    'syllabus_count'
 ])
 
 for dirpath, dirnames, filenames in os.walk('./data/'):
@@ -35,6 +36,11 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
         profs = '; '.join(instructors)
         seats = sum([s['seats'] for s in course['sections']])
 
+        if 'syllabus_count' in course:
+            syllabus_count = course['syllabus_count']
+        else:
+            syllabus_count = None
+
         output.writerow([
             course['id'],
             course['title'],
@@ -43,7 +49,7 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
             course['department'],
             profs,
             seats,
+            syllabus_count
         ])
 
         print(course['id'])
-

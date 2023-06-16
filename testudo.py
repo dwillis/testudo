@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import re
 import os
 import json
 import time
@@ -9,7 +10,7 @@ from urllib.parse import urljoin
 from requests_html import HTMLSession
 
 www = HTMLSession()
-www.headers['user-agent'] = 'testudo.py <https://github.com/edsu/testudo>'
+www.headers['user-agent'] = 'testudo.py <https://github.com/dwillis/testudo>'
 sleep = 1
 
 def main():
@@ -54,6 +55,12 @@ def get_courses(dept, term):
 def get_course(dept, term, div):
     course_id = div.find('.course-id', first=True).text
     now = datetime.datetime.utcnow().isoformat() + 'Z'
+    syllabus_text = [d for d in div.find('span') if re.findall(r'\(\d+\)', d.text)][0].text
+    if syllabus_text == '(0)':
+        syllabus_count = 0
+    else:
+        print(syllabus_text)
+        syllabus_count = re.findall(r'\d+', syllabus_text)[0]
     return {
         'id': course_id,
         'title': div.find('.course-title', first=True).text,
@@ -63,6 +70,7 @@ def get_course(dept, term, div):
         'sections': get_sections(course_id, term),
         'term': term,
         'department': dept['name'],
+        'syllabus_count': syllabus_count,
         'updated': now
     }
 
