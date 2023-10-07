@@ -4,7 +4,7 @@
 [University of Maryland Schedule of Classes]. It includes information such as
 the title of the class, the size of the class, enrollment, the time and location
 of the class, and the name of the instructor. This repository only makes the
-code for assembling the data available. Please email edsu@umd.edu with any
+code for assembling the data available. Please email dpwillis@umd.edu with any
 questions.
 
 ```
