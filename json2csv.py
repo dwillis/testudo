@@ -18,6 +18,8 @@ output.writerow([
     'department',
     'instructors',
     'seats',
+    'open_seats',
+    'filled_seats',
     'syllabus_count'
 ])
 
@@ -28,6 +30,8 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
 
         course = json.load(open(dirpath + '/' + filename))
 
+        print(f"{course['id']}-{course['term']}")
+
         # collect the instructors in all sections
         instructors = set()
         for section in course['sections']:
@@ -35,6 +39,12 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
 
         profs = '; '.join(instructors)
         seats = sum([s['seats'] for s in course['sections']])
+        try:
+            open_seats = sum([s['open_seats'] for s in course['sections']])
+        except:
+            open_seats = sum([s['open-seats'] for s in course['sections']])
+
+        filled_seats = seats-open_seats
 
         if 'syllabus_count' in course:
             syllabus_count = course['syllabus_count']
@@ -49,7 +59,7 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
             course['department'],
             profs,
             seats,
+            open_seats,
+            filled_seats,
             syllabus_count
         ])
-
-        print(course['id'])
