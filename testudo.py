@@ -13,8 +13,8 @@ www = HTMLSession()
 www.headers['user-agent'] = 'testudo.py <https://github.com/dwillis/testudo>'
 sleep = 1
 
-def main():
-    for term in get_terms():
+def main(term=None):
+    for term in get_terms(active_only=True, term=term):
         print("getting term %s" % term)
         for dept in get_departments():
             print("getting courses in %s for %s" % (term, dept['id']))
@@ -26,12 +26,15 @@ def main():
                     os.makedirs(json_dir)
                 open(json_file, 'w').write(json.dumps(course, indent=2))
 
-def get_terms(active_only=True):
+def get_terms(active_only=True, term=None):
     url = 'https://app.testudo.umd.edu/soc/'
     r = www.get(url)
-    terms = []
-    for e in r.html.find('#term-id-input option'):
-        terms.append(e.attrs['value'])
+    if term:
+        terms = [term]
+    else:
+        terms = []
+        for e in r.html.find('#term-id-input option'):
+            terms.append(e.attrs['value'])
     return terms
 
 def get_departments():

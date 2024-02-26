@@ -16,6 +16,7 @@ output.writerow([
     'description',
     'term',
     'department',
+    'sections',
     'instructors',
     'seats',
     'open_seats',
@@ -31,6 +32,8 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
         course = json.load(open(dirpath + '/' + filename))
 
         print(f"{course['id']}-{course['term']}")
+
+        sections = len(course['sections'])
 
         # collect the instructors in all sections
         instructors = set()
@@ -57,6 +60,7 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
             course['description'],
             course['term'],
             course['department'],
+            sections,
             profs,
             seats,
             open_seats,

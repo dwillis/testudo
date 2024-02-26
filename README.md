@@ -8,7 +8,7 @@ code for assembling the data available. Please email dpwillis@umd.edu with any
 questions.
 
 ```
-git clone https://github.com/edsu/testudo.git
+git clone https://github.com/dwillis/testudo.git
 cd testudo
 pipenv install
 ./testudo.py
