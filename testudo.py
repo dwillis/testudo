@@ -64,11 +64,18 @@ def get_course(dept, term, div):
     else:
         print(syllabus_text)
         syllabus_count = re.findall(r'\d+', syllabus_text)[0]
+    match = re.search(r'\d+', course_id)
+    if int(match.group()) > 499:
+        level = 'Grad'
+    else:
+        level = 'Undergrad'
+
     return {
         'id': course_id,
         'title': div.find('.course-title', first=True).text,
         'credits': div.find('.course-min-credits', first=True).text,
         'description': t(div, '.approved-course-text') or t(div, '.course-text'),
+        'level': level,
         'grading-method': div.find('.grading-method', first=True).text.split(', '),
         'sections': get_sections(course_id, term),
         'term': term,

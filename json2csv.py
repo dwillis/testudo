@@ -4,7 +4,6 @@
 json2csv.py will read in the individual JSON files that testudo.py writes
 and write them out as as single CSV file for processing as a spreadsheet.
 """
-
 import os
 import csv
 import json
@@ -16,6 +15,7 @@ output.writerow([
     'description',
     'term',
     'department',
+    'level',
     'sections',
     'instructors',
     'seats',
@@ -54,12 +54,18 @@ for dirpath, dirnames, filenames in os.walk('./data/'):
         else:
             syllabus_count = None
 
+        if 'level' in course:
+            level = course['level']
+        else:
+            level = None
+
         output.writerow([
             course['id'],
             course['title'],
             course['description'],
             course['term'],
             course['department'],
+            level,
             sections,
             profs,
             seats,
