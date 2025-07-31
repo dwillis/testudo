@@ -50,13 +50,16 @@ def flatten_sections(course_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     term = course_data.get('term')
     
     for section in course_data.get('sections', []):
+        # Handle both 'open_seats' (new format) and 'open-seats' (old format)
+        open_seats = section.get('open_seats') or section.get('open-seats', 0)
+        
         flattened_section = {
             'course_id': course_id,
             'term': term,
             'section_id': section.get('id'),
             'instructors': ', '.join(section.get('instructors', [])) if section.get('instructors') else None,
             'seats': section.get('seats', 0),
-            'open_seats': section.get('open-seats', 0),
+            'open_seats': open_seats,
             'waitlist': section.get('waitlist', 0),
             'days': section.get('days'),
             'start_time': section.get('start'),
