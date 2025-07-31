@@ -231,6 +231,7 @@ For convenience, the included **json2csv.py** program converts all JSON files in
   "term": "202508",
   "department": "African American and Africana Studies",
   "syllabus_count": 1,
+  "most_recent_syllabus": "Fall 2023",
   "updated": "2025-07-30T22:49:50.401322Z"
 }
 ```

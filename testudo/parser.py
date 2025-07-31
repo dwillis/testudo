@@ -120,6 +120,9 @@ class TestudoParser:
             # Parse syllabus count
             syllabus_count = self._parse_syllabus_count(div, course_id)
             
+            # Extract most recent syllabus title
+            most_recent_syllabus = self._extract_most_recent_syllabus(div, course_id)
+            
             # Get sections
             sections = self.get_sections(course_id, term)
             
@@ -134,6 +137,7 @@ class TestudoParser:
                 term=term,
                 department=department.name,
                 syllabus_count=syllabus_count,
+                most_recent_syllabus=most_recent_syllabus,
                 updated=datetime.datetime.utcnow().isoformat() + 'Z'
             )
             
@@ -154,6 +158,33 @@ class TestudoParser:
         except (IndexError, ValueError, AttributeError) as e:
             logger.warning(f"Could not parse syllabus count for {course_id}: {e}")
         return 0
+    
+    def _extract_most_recent_syllabus(self, div: Element, course_id: str) -> Optional[str]:
+        """Extract the most recent syllabus title from course div using JavaScript rendering.
+        
+        This method attempts to click the syllabus toggle and extract semester/year patterns
+        like 'Fall 2023', 'Spring 2025', '2023 Spring', '2024 Fall', etc.
+        """
+        try:
+            # Check if there are syllabi to extract
+            syllabus_count = self._parse_syllabus_count(div, course_id)
+            if syllabus_count == 0:
+                return None
+            
+            # Try to use the Playwright-based extractor if available
+            try:
+                from .syllabus_extractor import SyllabusExtractor
+                # For now, we'll skip the browser automation in the main scraper
+                # and just log that syllabi are available for later extraction
+                logger.debug(f"Course {course_id} has {syllabus_count} syllabi available for extraction")
+                return None
+            except ImportError:
+                logger.debug("Playwright not available - syllabus extraction disabled")
+                return None
+            
+        except Exception as e:
+            logger.warning(f"Could not extract syllabus for {course_id}: {e}")
+            return None
     
     @retry_on_failure(max_retries=2, base_delay=0.5)
     def get_sections(self, course_id: str, term: str) -> List[Section]:

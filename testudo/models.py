@@ -32,6 +32,7 @@ class Course:
     term: str
     department: str
     syllabus_count: int
+    most_recent_syllabus: Optional[str]
     updated: str
 
     def to_dict(self) -> Dict[str, Any]:
