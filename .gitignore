@@ -1,4 +1,9 @@
 __pycache__
 data
+data.zip
 .pytest_cache
 backup.sh
+.DS_Store
+*.pyc
+.venv/
+*.db
