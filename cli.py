@@ -15,7 +15,10 @@ def main():
 Examples:
   %(prog)s --test                    # Test with AAAS department
   %(prog)s --test CMSC               # Test with CMSC department  
+  %(prog)s --department CMSC         # Scrape only CMSC department
+  %(prog)s --department CMSC --extract-syllabi  # Scrape CMSC with syllabus extraction
   %(prog)s --term 202508             # Scrape specific term
+  %(prog)s --department JOUR --term 202508  # Scrape JOUR for specific term
   %(prog)s --verbose --test JOUR     # Test with debug logging
   %(prog)s --to-sqlite courses.db    # Convert existing JSON to SQLite
   %(prog)s --to-csv courses.csv      # Convert existing JSON to CSV
@@ -27,6 +30,17 @@ Examples:
         nargs='?', 
         const='AAAS',
         help='Test mode - scrape only specified department (default: AAAS)'
+    )
+    
+    parser.add_argument(
+        '--department',
+        help='Scrape only the specified department (e.g., CMSC, JOUR, MATH)'
+    )
+    
+    parser.add_argument(
+        '--extract-syllabi',
+        action='store_true',
+        help='Extract syllabus titles using browser automation (slower but includes syllabus data)'
     )
     
     parser.add_argument(
@@ -84,6 +98,11 @@ Examples:
     
     args = parser.parse_args()
     
+    # Validate mutually exclusive options
+    if args.test and args.department:
+        print("Error: --test and --department options cannot be used together")
+        sys.exit(1)
+    
     # Handle SQLite conversion
     if args.to_sqlite:
         import os
@@ -140,7 +159,8 @@ Examples:
     config = ScraperConfig(
         data_dir=args.data_dir,
         request_delay=args.delay,
-        log_level=log_level
+        log_level=log_level,
+        extract_syllabi=args.extract_syllabi
     )
     
     if args.term:
@@ -152,6 +172,8 @@ Examples:
     try:
         if args.test:
             scraper.scrape_test(department_id=args.test, term=args.term)
+        elif args.department:
+            scraper.scrape_department(department_id=args.department, term=args.term)
         else:
             scraper.scrape_full(term=args.term)
     

@@ -19,6 +19,7 @@ class TestudoParser:
         self.config = config
         self.session = HTMLSession()
         self.session.headers['user-agent'] = config.user_agent
+        self._syllabus_cache = {}  # Cache syllabus results per department
     
     @retry_on_failure(max_retries=3, base_delay=1.0)
     def get_terms(self, active_only: bool = True, term: Optional[str] = None) -> List[str]:
@@ -171,16 +172,35 @@ class TestudoParser:
             if syllabus_count == 0:
                 return None
             
-            # Try to use the Playwright-based extractor if available
-            try:
-                from .syllabus_extractor import SyllabusExtractor
-                # For now, we'll skip the browser automation in the main scraper
-                # and just log that syllabi are available for later extraction
-                logger.debug(f"Course {course_id} has {syllabus_count} syllabi available for extraction")
+            # Only extract if explicitly enabled in config
+            if not self.config.extract_syllabi:
+                logger.debug(f"Course {course_id} has {syllabus_count} syllabi available for extraction (use --extract-syllabi to enable)")
                 return None
-            except ImportError:
-                logger.debug("Playwright not available - syllabus extraction disabled")
-                return None
+            
+            # Get department code from course ID
+            dept_code = course_id[:4]  # First 4 characters (e.g., CMSC from CMSC417)
+            
+            # Check if we already have syllabus data for this department
+            if dept_code not in self._syllabus_cache:
+                # Extract syllabi for the entire department and cache results
+                try:
+                    from .syllabus_extractor import SyllabusExtractor
+                    
+                    department_url = f"{self.config.base_url}/{self.config.default_term}/{dept_code}"
+                    logger.info(f"Extracting syllabi for department {dept_code} using browser automation...")
+                    
+                    extractor = SyllabusExtractor(headless=True)
+                    self._syllabus_cache[dept_code] = extractor.extract_syllabi_for_department(department_url)
+                    
+                except ImportError:
+                    logger.debug("Playwright not available - syllabus extraction disabled")
+                    self._syllabus_cache[dept_code] = {}
+                except Exception as e:
+                    logger.warning(f"Error extracting syllabi for department {dept_code}: {e}")
+                    self._syllabus_cache[dept_code] = {}
+            
+            # Return the cached result for this course
+            return self._syllabus_cache[dept_code].get(course_id)
             
         except Exception as e:
             logger.warning(f"Could not extract syllabus for {course_id}: {e}")

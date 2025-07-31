@@ -8,7 +8,9 @@
 - 🔧 **Flexible CLI** with multiple operation modes
 - 🗄️ **SQLite conversion** to transform JSON course data into queryable databases
 - 📊 **CSV export** for spreadsheet analysis and data processing
-- 🔄 **Resilient scraping** with automatic retries and exponential backoff
+- � **Syllabus extraction** using browser automation (optional)
+- 🎯 **Department-specific scraping** for targeted data collection
+- �🔄 **Resilient scraping** with automatic retries and exponential backoff
 - 📊 **Comprehensive logging** with detailed progress tracking and error reporting
 - 🧪 **Test mode** for safe development and testing
 - 🏗️ **Modular architecture** with separate components for parsing, data models, and orchestration
@@ -26,6 +28,9 @@ uv sync
 
 # Test with a single department (safe for development)
 uv run python cli.py --test AAAS
+
+# Scrape a single department 
+uv run python cli.py --department CMSC
 
 # Run full scrape
 uv run python cli.py --term 202508
@@ -53,8 +58,17 @@ uv run python json2csv.py --help
 # Test with specific department
 uv run python cli.py --test CMSC
 
+# Scrape specific department
+uv run python cli.py --department CMSC
+
+# Scrape with syllabus extraction (slower, uses browser automation)
+uv run python cli.py --department CMSC --extract-syllabi
+
 # Scrape specific term
 uv run python cli.py --term 202508
+
+# Scrape department for specific term
+uv run python cli.py --department JOUR --term 202508
 
 # Enable debug logging
 uv run python cli.py --verbose --test JOUR
@@ -236,6 +250,24 @@ For convenience, the included **json2csv.py** program converts all JSON files in
 }
 ```
 
+### Syllabus Extraction
+
+By default, the scraper only counts the number of syllabi available for each course (`syllabus_count` field). To extract the actual syllabus titles, use the `--extract-syllabi` flag:
+
+```bash
+# Extract syllabi for a specific department
+uv run python cli.py --department CMSC --extract-syllabi
+
+# This will populate the 'most_recent_syllabus' field with values like:
+# "Fall 2023", "Spring 2024", "Summer 2024", etc.
+```
+
+**Important Notes:**
+- Syllabus extraction uses browser automation (Playwright) and is significantly slower
+- Only the most recent syllabus title is extracted per course
+- The feature caches results at the department level for efficiency
+- Extraction is optional due to performance impact
+
 ## Development
 
 ### Setup Development Environment
@@ -303,6 +335,7 @@ config = ScraperConfig(
 
 ```
 --test [DEPT]         Test mode - scrape only specified department (default: AAAS)
+--department DEPT     Scrape only the specified department (e.g., CMSC, JOUR, MATH)
 --term TERM           Specific term to scrape (e.g., 202508)  
 --verbose, -v         Enable debug logging
 --data-dir DIR        Directory to save course data (default: data)

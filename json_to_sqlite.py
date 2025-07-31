@@ -32,6 +32,7 @@ def flatten_course(course_data: Dict[str, Any]) -> Dict[str, Any]:
         'term': course_data.get('term'),
         'department': course_data.get('department'),
         'syllabus_count': course_data.get('syllabus_count', 0),
+        'most_recent_syllabus': course_data.get('most_recent_syllabus'),
         'updated': course_data.get('updated'),
         'grading_methods': ', '.join(course_data.get('grading-method', [])) if course_data.get('grading-method') else None,
         'section_count': len(course_data.get('sections', []))
@@ -168,6 +169,7 @@ def process_json_files(
             c.term,
             c.department,
             c.syllabus_count,
+            c.most_recent_syllabus,
             c.grading_methods,
             s.section_id,
             s.instructors,

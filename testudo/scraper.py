@@ -79,6 +79,28 @@ class TestudoScraper:
             term_time = time.time() - term_start
             logger.info(f"Completed term {term} in {term_time:.1f}s")
     
+    def scrape_department(self, department_id: str, term: Optional[str] = None) -> None:
+        """Scrape a single department."""
+        term = term or self.config.default_term
+        
+        logger.info(f"Scraping department {department_id} for term {term}")
+        
+        try:
+            departments = self.parser.get_departments()
+            dept = next((d for d in departments if d.id == department_id), None)
+            
+            if not dept:
+                logger.error(f"Department {department_id} not found")
+                available_depts = [d.id for d in departments[:10]]  # Show first 10
+                logger.info(f"Available departments (first 10): {', '.join(available_depts)}")
+                return
+            
+            logger.info(f"Found department: {dept.name} ({dept.id})")
+            self._scrape_department(dept, term, 1, 1)
+            
+        except Exception as e:
+            logger.error(f"Error scraping department {department_id}: {e}")
+    
     def _scrape_department(self, dept: Department, term: str, dept_num: int, total_depts: int) -> None:
         """Scrape a single department."""
         dept_start = time.time()

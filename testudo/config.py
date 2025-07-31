@@ -15,6 +15,7 @@ class ScraperConfig:
     default_term: str = "202508"
     data_dir: str = "data"
     log_level: str = "INFO"
+    extract_syllabi: bool = False  # Enable syllabus extraction using browser automation
     
     # Test mode settings
     test_max_courses: int = 3

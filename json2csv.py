@@ -49,7 +49,8 @@ def process_json_to_csv(input_dir: str, output_file: str) -> None:
             'open_seats',
             'filled_seats',
             'waitlist',
-            'syllabus_count'
+            'syllabus_count',
+            'most_recent_syllabus'
         ])
         
         for dirpath, dirnames, filenames in os.walk(input_dir):
@@ -109,8 +110,9 @@ def process_json_to_csv(input_dir: str, output_file: str) -> None:
                     instructors_str = '; '.join(sorted(instructors)) if instructors else ''
                     filled_seats = total_seats - total_open_seats
                     
-                    # Handle syllabus count
+                    # Handle syllabus information
                     syllabus_count = course.get('syllabus_count', 0) or 0
+                    most_recent_syllabus = course.get('most_recent_syllabus', '') or ''
                     
                     writer.writerow([
                         course_id,
@@ -127,7 +129,8 @@ def process_json_to_csv(input_dir: str, output_file: str) -> None:
                         total_open_seats,
                         filled_seats,
                         total_waitlist,
-                        syllabus_count
+                        syllabus_count,
+                        most_recent_syllabus
                     ])
                     
                     processed_count += 1

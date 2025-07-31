@@ -51,6 +51,7 @@ class TestModels:
             term="202508",
             department="Test Department",
             syllabus_count=1,
+            most_recent_syllabus="Fall 2023",
             updated="2025-07-30T00:00:00.000Z"
         )
         
@@ -58,6 +59,7 @@ class TestModels:
         assert course_dict["id"] == "AAAS100"
         assert len(course_dict["sections"]) == 1
         assert course_dict["sections"][0]["id"] == "0101"
+        assert course_dict["most_recent_syllabus"] == "Fall 2023"
     
     def test_course_to_json(self):
         section = Section(
@@ -77,6 +79,7 @@ class TestModels:
             term="202508",
             department="Test Department",
             syllabus_count=1,
+            most_recent_syllabus=None,
             updated="2025-07-30T00:00:00.000Z"
         )
         
