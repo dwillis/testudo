@@ -1,18 +1,18 @@
 # testudo
 
-**testudo** is a robust Python scraper for collecting course information from the University of Maryland's [Schedule of Classes](https://app.testudo.umd.edu/soc/). It extracts comprehensive data including course titles, enrollment numbers, schedules, locations, instructor information, and more.
+**testudo** is a Python scraper for collecting course information from the University of Maryland's [Schedule of Classes](https://app.testudo.umd.edu/soc/). It extracts data including course titles, enrollment numbers, schedules, locations, instructor information, and more.
 
 ## Features
 
+- 📦 **Modern Python packaging** with uv support
+- 🔧 **Flexible CLI** with multiple operation modes
+- 🗄️ **SQLite conversion** to transform JSON course data into queryable databases
+- 📊 **CSV export** for spreadsheet analysis and data processing
 - 🔄 **Resilient scraping** with automatic retries and exponential backoff
 - 📊 **Comprehensive logging** with detailed progress tracking and error reporting
 - 🧪 **Test mode** for safe development and testing
 - 🏗️ **Modular architecture** with separate components for parsing, data models, and orchestration
 - ✅ **Full test suite** with unit tests and type checking
-- 📦 **Modern Python packaging** with uv support
-- 🔧 **Flexible CLI** with multiple operation modes
-- 🗄️ **SQLite conversion** to transform JSON course data into queryable databases
-- 📊 **CSV export** for spreadsheet analysis and data processing
 
 ## Quick Start
 
@@ -27,20 +27,8 @@ uv sync
 # Test with a single department (safe for development)
 uv run python cli.py --test AAAS
 
-# Run full scrape (production)
+# Run full scrape
 uv run python cli.py --term 202508
-```
-
-### Alternative: Using standalone scripts
-
-The original single-file script is still available:
-
-```bash
-# Test mode
-uv run python testudo.py --test AAAS
-
-# Full scrape
-uv run python testudo.py
 ```
 
 You can also use the conversion scripts directly:
@@ -368,6 +356,3 @@ For questions or issues, please email dpwillis@umd.edu or open an issue on GitHu
 - 📦 **Modern packaging**: uv support and proper Python packaging
 - 🔧 **Configuration system**: Centralized configuration management
 - 🚀 **Performance improvements**: Better memory usage and request handling
-
-### Legacy
-- Original single-file scraper with basic functionality
