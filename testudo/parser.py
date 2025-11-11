@@ -117,16 +117,19 @@ class TestudoParser:
             grading_methods = []
             if grading_text:
                 grading_methods = [method.strip() for method in grading_text.split(',') if method.strip()]
-            
+
+            # Parse general education codes
+            gen_ed_codes = self._parse_gen_ed_codes(div, course_id)
+
             # Parse syllabus count
             syllabus_count = self._parse_syllabus_count(div, course_id)
-            
+
             # Extract most recent syllabus title
             most_recent_syllabus = self._extract_most_recent_syllabus(div, course_id)
-            
+
             # Get sections
             sections = self.get_sections(course_id, term)
-            
+
             return Course(
                 id=course_id,
                 title=title,
@@ -134,6 +137,7 @@ class TestudoParser:
                 description=description,
                 level=level,
                 grading_method=grading_methods,
+                gen_ed=gen_ed_codes,
                 sections=sections,
                 term=term,
                 department=department.name,
@@ -146,6 +150,36 @@ class TestudoParser:
             logger.error(f"Unexpected error parsing course: {e}")
             return None
     
+    def _parse_gen_ed_codes(self, div: Element, course_id: str) -> List[str]:
+        """Parse general education codes from course div.
+
+        Valid gen ed codes are: FSAW, FSAR, FSMA, FSOC, FSPW, DSHS, DSHU,
+        DSNS, DSNL, DSSP, DVCC, DVUP, SCIS
+        """
+        valid_codes = {
+            'FSAW', 'FSAR', 'FSMA', 'FSOC', 'FSPW',
+            'DSHS', 'DSHU', 'DSNS', 'DSNL', 'DSSP',
+            'DVCC', 'DVUP', 'SCIS'
+        }
+        gen_ed_codes = []
+
+        try:
+            # Look for gen ed information in various possible locations
+            # Check for elements with gen-ed related classes
+            for element in div.find('span, div'):
+                text = element.text.strip() if element.text else ''
+
+                # Find all 4-character uppercase codes in the text
+                matches = re.findall(r'\b([A-Z]{4})\b', text)
+                for match in matches:
+                    if match in valid_codes and match not in gen_ed_codes:
+                        gen_ed_codes.append(match)
+
+        except Exception as e:
+            logger.warning(f"Could not parse gen ed codes for {course_id}: {e}")
+
+        return sorted(gen_ed_codes)
+
     def _parse_syllabus_count(self, div: Element, course_id: str) -> int:
         """Parse syllabus count from course div."""
         try:

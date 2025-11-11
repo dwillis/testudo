@@ -28,6 +28,7 @@ class Course:
     description: str
     level: str
     grading_method: List[str]
+    gen_ed: List[str]
     sections: List[Section]
     term: str
     department: str
