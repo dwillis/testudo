@@ -11,6 +11,7 @@ import argparse
 import sqlite3
 import struct
 import pickle
+import csv
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -201,6 +202,48 @@ class CourseSemanticSearch:
 
         return '\n'.join(lines)
 
+    def export_to_csv(self, results: List[Dict[str, Any]], filename: str) -> None:
+        """
+        Export search results to a CSV file.
+
+        Args:
+            results: List of course dictionaries
+            filename: Path to output CSV file
+        """
+        if not results:
+            print(f"No results to export")
+            return
+
+        # Define fields to export
+        fieldnames = [
+            'course_id',
+            'title',
+            'department',
+            'level',
+            'credits',
+            'term',
+            'description',
+            'relevance_score',
+            'distance'
+        ]
+
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+
+            for course in results:
+                # Calculate relevance score from distance
+                relevance_score = ''
+                if 'distance' in course:
+                    similarity = max(0, 1 - course['distance']) * 100
+                    relevance_score = f"{similarity:.1f}%"
+
+                # Create row with relevance score
+                row = {**course, 'relevance_score': relevance_score}
+                writer.writerow(row)
+
+        print(f"Exported {len(results)} results to {filename}")
+
     def close(self):
         """Close database connection."""
         self.db.close()
@@ -226,6 +269,10 @@ Examples:
 
   # Multiple terms
   python semantic_search.py "artificial intelligence" --term 202501 202508
+
+  # Export results to CSV
+  python semantic_search.py "machine learning" --csv results.csv
+  python semantic_search.py "data structures" --limit 20 --csv courses.csv
         """
     )
 
@@ -275,6 +322,13 @@ Examples:
         help='Minimum number of credits'
     )
 
+    parser.add_argument(
+        '--csv',
+        '--output',
+        dest='csv_output',
+        help='Export results to CSV file (e.g., results.csv)'
+    )
+
     args = parser.parse_args()
 
     # Check if database exists
@@ -321,6 +375,10 @@ Examples:
                 print(searcher.format_result(course, i))
 
         print("\n" + "="*70)
+
+        # Export to CSV if requested
+        if args.csv_output and results:
+            searcher.export_to_csv(results, args.csv_output)
 
         searcher.close()
         return 0
