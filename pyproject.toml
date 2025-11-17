@@ -7,9 +7,12 @@ requires-python = ">=3.9"
 dependencies = [
     "datasette>=0.65.1",
     "lxml-html-clean>=0.4.2",
+    "numpy>=2.0.2",
     "playwright>=1.54.0",
     "requests-html>=0.10.0",
+    "scikit-learn>=1.6.1",
     "sqlite-utils>=3.37.0",
+    "sqlite-vss>=0.1.2",
 ]
 authors = [
     {name = "Derek Willis", email = "dwillis@umd.edu"}
