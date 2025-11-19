@@ -7,3 +7,4 @@ backup.sh
 *.pyc
 .venv/
 *.db
+*.pkl
