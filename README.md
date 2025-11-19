@@ -6,6 +6,7 @@
 
 - 📦 **Modern Python packaging** with uv support
 - 🔧 **Flexible CLI** with multiple operation modes
+- 🔍 **Semantic search** using TF-IDF embeddings for natural language course queries
 - 🗄️ **SQLite conversion** to transform JSON course data into queryable databases
 - 📊 **CSV export** for spreadsheet analysis and data processing
 - � **Syllabus extraction** using browser automation (optional)
@@ -29,7 +30,7 @@ uv sync
 # Test with a single department (safe for development)
 uv run python cli.py --test AAAS
 
-# Scrape a single department 
+# Scrape a single department
 uv run python cli.py --department CMSC
 
 # Run full scrape
@@ -42,12 +43,25 @@ You can also use the conversion scripts directly:
 # SQLite conversion
 uv run python json_to_sqlite.py data/202501/CMSC courses.db
 
-# CSV conversion  
+# CSV conversion
 uv run python json2csv.py --input data/202501/CMSC --output courses.csv
 
 # See all options
 uv run python json_to_sqlite.py --help
 uv run python json2csv.py --help
+```
+
+### Semantic Search Quick Start
+
+```bash
+# Prepare data for semantic search
+uv run python cli.py --to-csv courses_202501.csv --data-dir data/202501
+uv run python csv_to_db.py
+uv run python generate_embeddings_tfidf.py
+
+# Search courses using natural language
+uv run python semantic_search.py "machine learning courses"
+uv run python semantic_search.py "web development" --term 202501 --limit 20
 ```
 
 ## Usage
@@ -158,8 +172,91 @@ The generated CSV includes columns for:
 - Section info: section count, total seats, open seats, filled seats, waitlist
 - Instructor information: all instructors across sections
 - Additional data: grading methods, syllabus count
+
+### Semantic Search
+
+Search through courses using natural language queries powered by TF-IDF embeddings and vector similarity search.
+
+#### Setup
+
+Before using semantic search, you need to prepare your data:
+
+```bash
+# Step 1: Export course data to CSV
+uv run python cli.py --to-csv courses_202501.csv --data-dir data/202501
+
+# Step 2: Convert CSV to SQLite database
+uv run python csv_to_db.py
+
+# Step 3: Generate embeddings
+uv run python generate_embeddings_tfidf.py
 ```
+
+#### Basic Usage
+
+```bash
+# Simple search
+uv run python semantic_search.py "machine learning courses"
+
+# Search with more results
+uv run python semantic_search.py "web development" --limit 20
+
+# Filter by specific term
+uv run python semantic_search.py "data structures" --term 202501
+
+# Filter by department
+uv run python semantic_search.py "artificial intelligence" --department "Computer Science"
+
+# Filter by course level
+uv run python semantic_search.py "introduction to programming" --level "Lower Level"
+
+# Combine multiple filters
+uv run python semantic_search.py "database systems" --term 202501 202508 --level "Upper Level"
+
+# Export results to CSV
+uv run python semantic_search.py "machine learning" --csv results.csv
 ```
+
+#### Search Filters
+
+The semantic search supports the following filters:
+
+- `--term`: Filter by one or more terms (e.g., `--term 202501 202508`)
+- `--department`: Filter by department name (e.g., `--department "Computer Science"`)
+- `--level`: Filter by course level (e.g., `--level "Upper Level"`, `--level "Grad"`)
+- `--min-credits`: Filter by minimum credit hours (e.g., `--min-credits 3`)
+- `--limit`: Maximum number of results to return (default: 10)
+
+#### Output Format
+
+Search results include:
+- Course ID and title
+- Department, level, and credit information
+- Course description (truncated to 200 characters)
+- Relevance score (0-100%) indicating how well the course matches your query
+
+Example output:
+```
+1. CMSC420 - Data Structures
+   Computer Science | Upper Level | 3 credits | Term: 202501
+   Introduction to data structures and their algorithms...
+   Relevance: 87.3%
+
+2. CMSC430 - Introduction to Compilers
+   Computer Science | Upper Level | 3 credits | Term: 202501
+   Topics in design and implementation of programming language compilers...
+   Relevance: 82.1%
+```
+
+#### Technical Details
+
+The semantic search uses:
+- **TF-IDF vectorization** with unigrams and bigrams for text representation
+- **SVD dimensionality reduction** to create 384-dimensional dense embeddings
+- **sqlite-vss** for fast vector similarity search
+- **Cosine similarity** for ranking results
+
+This approach provides efficient semantic search without requiring heavy ML models or external APIs. The embeddings capture both course titles and descriptions, enabling natural language queries like "courses about machine learning" or "web programming classes."
 
 ### Python API
 
@@ -190,17 +287,21 @@ scraper.print_stats()
 
 ```
 testudo/
-├── cli.py                    # Modern command-line interface
-├── testudo.py               # Original script (still functional)
-├── testudo/                 # Main package
-│   ├── config.py           # Configuration and settings
-│   ├── models.py           # Data models (Course, Section, Department)
-│   ├── utils.py            # Utility functions and decorators
-│   ├── parser.py           # HTML parsing and data extraction
-│   └── scraper.py          # Main orchestration logic
-├── tests/                   # Comprehensive test suite
-│   └── test_testudo.py     # Unit tests
-└── data/                    # Output directory (created automatically)
+├── cli.py                           # Modern command-line interface
+├── testudo.py                       # Original script (still functional)
+├── semantic_search.py               # Semantic search CLI
+├── csv_to_db.py                     # CSV to SQLite converter
+├── generate_embeddings_tfidf.py     # TF-IDF embedding generator
+├── generate_embeddings.py           # Sentence-transformer embeddings (alternative)
+├── testudo/                         # Main package
+│   ├── config.py                   # Configuration and settings
+│   ├── models.py                   # Data models (Course, Section, Department)
+│   ├── utils.py                    # Utility functions and decorators
+│   ├── parser.py                   # HTML parsing and data extraction
+│   └── scraper.py                  # Main orchestration logic
+├── tests/                           # Comprehensive test suite
+│   └── test_testudo.py             # Unit tests
+└── data/                            # Output directory (created automatically)
     └── {term}/
         └── {dept}/
             └── {course}.json
@@ -381,9 +482,16 @@ For questions or issues, please email dpwillis@umd.edu or open an issue on GitHu
 
 ## Changelog
 
+### v1.1.0 (2025-11-19)
+- 🔍 **Semantic search**: Natural language course search using TF-IDF embeddings
+- 📊 **CSV export for search**: Export semantic search results to CSV files
+- 🗄️ **Vector database**: SQLite-vss integration for efficient similarity search
+- 📈 **Embedding generation**: TF-IDF-based course embeddings with SVD dimensionality reduction
+- 🎯 **Advanced filtering**: Search with term, department, level, and credit filters
+
 ### v1.0.0 (2025-07-30)
 - 🎉 **Major refactor**: Modular architecture with separate components
-- ✨ **New CLI**: Modern argparse-based command-line interface  
+- ✨ **New CLI**: Modern argparse-based command-line interface
 - 🔄 **Enhanced error handling**: Retry logic with exponential backoff
 - 📊 **Improved logging**: Structured logging with progress tracking
 - 🧪 **Test suite**: Comprehensive unit tests with pytest
