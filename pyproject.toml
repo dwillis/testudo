@@ -12,7 +12,9 @@ dependencies = [
     "requests-html>=0.10.0",
     "scikit-learn>=1.6.1",
     "sqlite-utils>=3.37.0",
-    "sqlite-vss>=0.1.2",
+    "sqlite-vec>=0.1.6",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
 ]
 authors = [
     {name = "Derek Willis", email = "dwillis@umd.edu"}
