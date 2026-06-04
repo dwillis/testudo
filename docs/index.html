@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testudo Course Explorer</title>
+<style>
+  :root {
+    --red: #e21833;
+    --red-light: rgba(226, 24, 51, 0.08);
+    --gold: #ffd200;
+    --dark: #1a1a1a;
+    --gray: #6b7280;
+    --gray-light: #9ca3af;
+    --light: #f3f4f6;
+    --lighter: #f9fafb;
+    --white: #ffffff;
+    --border: #d1d5db;
+    --radius: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--lighter);
+    color: var(--dark);
+    line-height: 1.4;
+    font-size: 14px;
+  }
+
+  header {
+    background: var(--red);
+    color: var(--white);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
+  header span { font-size: 0.8rem; opacity: 0.8; }
+
+  nav {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    padding: 0 1.5rem;
+  }
+  nav a {
+    padding: 0.6rem 1rem;
+    text-decoration: none;
+    color: var(--gray);
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: color 0.1s, border-color 0.1s;
+  }
+  nav a:hover { color: var(--dark); }
+  nav a.active { color: var(--red); border-bottom-color: var(--red); }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .filters {
+    display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;
+  }
+  .filters select, .filters input {
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    background: var(--white);
+    color: var(--dark);
+  }
+  .filters label {
+    font-size: 0.8rem; color: var(--gray); font-weight: 500;
+  }
+  .stat-row {
+    display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.8rem; color: var(--gray);
+  }
+  .stat-row strong { color: var(--dark); }
+
+  /* Heatmap */
+  .heatmap-wrap { overflow-x: auto; }
+  .heatmap {
+    display: grid;
+    grid-template-columns: 70px repeat(7, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    min-width: 600px;
+  }
+  .hm-header {
+    background: var(--light);
+    padding: 0.3rem 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--gray);
+  }
+  .hm-time {
+    background: var(--white);
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+    color: var(--gray);
+    display: flex;
+    align-items: center;
+  }
+  .hm-cell {
+    background: var(--white);
+    padding: 0.15rem;
+    font-size: 0.6rem;
+    text-align: center;
+    color: var(--white);
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    position: relative;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-weight: 500;
+  }
+  .hm-cell.empty { color: transparent; }
+  .hm-cell .count { position: relative; z-index: 1; }
+
+  .tooltip {
+    display: none;
+    position: fixed;
+    background: var(--dark);
+    color: var(--white);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    z-index: 100;
+    pointer-events: none;
+    max-width: 220px;
+    line-height: 1.5;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .tooltip.visible { display: block; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  th {
+    background: var(--light);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--gray);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th:hover { color: var(--dark); }
+  td {
+    padding: 0.35rem 0.6rem;
+    border-top: 1px solid var(--light);
+  }
+  tr:hover td { background: var(--red-light); }
+  tr.clickable { cursor: pointer; }
+  .num { text-align: right; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.75rem; }
+
+  /* Department detail */
+  .dept-header { margin-bottom: 1rem; }
+  .dept-header h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .dept-header .sub { font-size: 0.8rem; color: var(--gray); }
+  .back-link { font-size: 0.8rem; color: var(--red); text-decoration: none; margin-bottom: 0.75rem; display: inline-block; }
+  .back-link:hover { text-decoration: underline; }
+
+  .dept-grid { display: grid; grid-template-columns: 1fr 240px; gap: 1rem; }
+  .dept-sidebar h3 { font-size: 0.8rem; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
+  .instructor-list { list-style: none; font-size: 0.8rem; }
+  .instructor-list li {
+    padding: 0.2rem 0;
+    display: flex; justify-content: space-between;
+    border-bottom: 1px solid var(--light);
+  }
+  .instructor-list .cnt { color: var(--gray); font-family: monospace; font-size: 0.75rem; }
+
+  .sparkline-wrap { margin-bottom: 1rem; }
+  .sparkline-wrap svg { width: 100%; height: 50px; }
+  .sparkline-wrap .spark-label { font-size: 0.65rem; color: var(--gray-light); display: flex; justify-content: space-between; }
+
+  .matrix-wrap { overflow-x: auto; margin-bottom: 1rem; }
+  .matrix {
+    border-collapse: collapse;
+    font-size: 0.65rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+  .matrix th {
+    padding: 0.2rem 0.3rem;
+    font-size: 0.55rem;
+    min-width: 32px;
+    text-align: center;
+  }
+  .matrix td {
+    padding: 0.15rem 0.25rem;
+    text-align: center;
+    min-width: 32px;
+    border-top: 1px solid var(--light);
+  }
+  .matrix td.has-sections {
+    background: rgba(226, 24, 51, var(--intensity, 0.15));
+    color: var(--dark);
+  }
+  .matrix td.no-sections { color: var(--border); }
+  .matrix .course-label {
+    text-align: left;
+    font-weight: 500;
+    white-space: nowrap;
+    padding-right: 0.5rem;
+    color: var(--dark);
+    font-size: 0.7rem;
+  }
+
+  /* Similarity */
+  .search-wrap { position: relative; max-width: 500px; margin-bottom: 1rem; }
+  .search-wrap input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    outline: none;
+  }
+  .search-wrap input:focus { border-color: var(--red); }
+  .dropdown {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 50;
+    display: none;
+  }
+  .dropdown.open { display: block; }
+  .dropdown-item {
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--light);
+  }
+  .dropdown-item:hover { background: var(--red-light); }
+  .dropdown-item .di-id { font-family: monospace; color: var(--red); font-weight: 600; }
+  .dropdown-item .di-title { margin-left: 0.5rem; }
+  .dropdown-item .di-dept { color: var(--gray); font-size: 0.75rem; margin-left: 0.5rem; }
+
+  .course-detail { margin-bottom: 1rem; }
+  .course-detail h2 { font-size: 1.1rem; font-weight: 700; }
+  .course-detail .cd-meta { font-size: 0.8rem; color: var(--gray); margin: 0.25rem 0 0.5rem; }
+  .course-detail .cd-desc { font-size: 0.85rem; color: #374151; line-height: 1.5; }
+
+  .neighbors { display: flex; flex-direction: column; gap: 0.5rem; }
+  .neighbor-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    transition: border-color 0.1s;
+  }
+  .neighbor-card:hover { border-color: var(--red); }
+  .nc-info { flex: 1; min-width: 0; }
+  .nc-id { font-family: monospace; font-size: 0.8rem; color: var(--red); font-weight: 600; }
+  .nc-title { font-size: 0.85rem; font-weight: 500; }
+  .nc-dept { font-size: 0.75rem; color: var(--gray); }
+  .score {
+    font-size: 0.7rem;
+    background: var(--gold);
+    color: var(--dark);
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .section-label { font-size: 0.8rem; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
+
+  /* Overview */
+  .overview-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  .ov-stat {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+  }
+  .ov-stat .big {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--dark);
+    font-family: "SF Mono", "Fira Code", monospace;
+    line-height: 1.2;
+  }
+  .ov-stat .label {
+    font-size: 0.75rem;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .ov-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    align-items: start;
+  }
+  .ov-panel {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+  }
+  .ov-panel h3 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.6rem;
+  }
+  .ov-chart { height: 120px; overflow: hidden; }
+  .ov-chart svg { width: 100%; height: 100%; display: block; }
+  .ov-list { list-style: none; font-size: 0.8rem; }
+  .ov-list li {
+    padding: 0.25rem 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--light);
+  }
+  .ov-list li:last-child { border-bottom: none; }
+  .ov-list .dept-link {
+    color: var(--red);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .ov-list .dept-link:hover { text-decoration: underline; }
+  .ov-list .cnt {
+    color: var(--gray);
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 0.75rem;
+  }
+  .ov-new-course {
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--light);
+    font-size: 0.8rem;
+  }
+  .ov-new-course:last-child { border-bottom: none; }
+  .ov-new-course .nc-id {
+    font-family: monospace;
+    color: var(--red);
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+  .ov-new-course .nc-dept {
+    color: var(--gray);
+    font-size: 0.7rem;
+  }
+  .ov-keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .kw-tag {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--dark);
+    background: var(--lighter);
+    white-space: nowrap;
+  }
+  .ov-peek {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--red);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .ov-peek:hover { text-decoration: underline; }
+
+  @media (max-width: 768px) {
+    .overview-stats { grid-template-columns: repeat(2, 1fr); }
+    .ov-grid { grid-template-columns: 1fr; }
+  }
+
+  .loading { text-align: center; padding: 2rem; color: var(--gray); font-size: 0.85rem; }
+
+  @media (max-width: 768px) {
+    .dept-grid { grid-template-columns: 1fr; }
+    .heatmap { min-width: 500px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Testudo Course Explorer</h1>
+  <span>University of Maryland course data, Fall 2017 &ndash; Fall 2026</span>
+</header>
+
+<nav>
+  <a href="#/" data-view="overview">Overview</a>
+  <a href="#/heatmap" data-view="heatmap">Schedule</a>
+  <a href="#/dept" data-view="dept">Departments</a>
+  <a href="#/similar" data-view="similar">Similarity</a>
+</nav>
+
+<div class="container">
+  <!-- Overview / Landing View -->
+  <div id="view-overview" class="view"></div>
+
+  <!-- Heatmap View -->
+  <div id="view-heatmap" class="view">
+    <div class="filters" id="hm-filters"></div>
+    <div class="stat-row" id="hm-stats"></div>
+    <div class="heatmap-wrap">
+      <div class="heatmap" id="hm-grid"></div>
+    </div>
+  </div>
+
+  <!-- Department List View -->
+  <div id="view-dept" class="view"></div>
+
+  <!-- Department Detail View -->
+  <div id="view-dept-detail" class="view"></div>
+
+  <!-- Similarity View -->
+  <div id="view-similar" class="view"></div>
+
+  <!-- Course Detail View -->
+  <div id="view-similar-detail" class="view"></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const cache = {};
+
+async function fetchJSON(path) {
+  if (cache[path]) return cache[path];
+  const r = await fetch('data/' + path);
+  if (!r.ok) throw new Error('Failed to load ' + path);
+  const d = await r.json();
+  cache[path] = d;
+  return d;
+}
+
+function formatTerm(code) {
+  if (!code || code.length !== 6) return code;
+  const y = code.slice(0, 4);
+  const s = {'01':'Spring','05':'Summer','08':'Fall','12':'Winter'}[code.slice(4)] || code.slice(4);
+  return s + ' ' + y;
+}
+
+function formatTermShort(code) {
+  if (!code || code.length !== 6) return code;
+  const s = {'01':'Sp','05':'Su','08':'Fa','12':'Wi'}[code.slice(4)] || '??';
+  return s + code.slice(2, 4);
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function slotLabel(i) {
+  const min = 7 * 60 + i * 30;
+  let h = Math.floor(min / 60), m = min % 60;
+  const ap = h < 12 ? 'a' : 'p';
+  if (h === 0) h = 12; else if (h > 12) h -= 12;
+  return h + ':' + String(m).padStart(2, '0') + ap;
+}
+
+const DAYS = ['M','Tu','W','Th','F','Sa','Su'];
+const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+function testudoUrl(courseId, termId) {
+  return `https://app.testudo.umd.edu/soc/search?courseId=${encodeURIComponent(courseId)}&sectionId=&termId=${encodeURIComponent(termId)}&_openSectionsOnly=on&creditCompare=&credits=&courseLevelFilter=ALL&instructor=&_facetoface=on&_blended=on&_online=on&courseStartCompare=&courseStartHour=&courseStartMin=&courseStartAM=&courseEndHour=&courseEndMin=&courseEndAM=&teachingCenter=ALL&_classDay1=on&_classDay2=on&_classDay3=on&_classDay4=on&_classDay5=on`;
+}
+
+function courseLink(courseId, termId) {
+  if (termId) {
+    return `<a href="${testudoUrl(courseId, termId)}" target="_blank" rel="noopener" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none" title="View on Testudo">${escHtml(courseId)}</a>`;
+  }
+  return `<span style="font-family:monospace;font-weight:600;color:var(--red)">${escHtml(courseId)}</span>`;
+}
+
+// ── Router ──
+
+let currentView = '';
+let currentParam = '';
+
+function route() {
+  const hash = location.hash || '#/';
+  const parts = hash.slice(2).split('/');
+  const view = parts[0] || 'overview';
+  const param = parts.slice(1).join('/');
+
+  document.querySelectorAll('nav a').forEach(a => {
+    const v = a.dataset.view;
+    a.classList.toggle('active', v === view ||
+      (view === '' && v === 'overview') ||
+      (view === 'dept' && v === 'dept') ||
+      (view === 'similar' && v === 'similar'));
+  });
+
+  // Determine which container to show
+  let viewId;
+  if (view === 'overview' || view === '') viewId = 'view-overview';
+  else if (view === 'heatmap') viewId = 'view-heatmap';
+  else if (view === 'dept' && param) viewId = 'view-dept-detail';
+  else if (view === 'dept') viewId = 'view-dept';
+  else if (view === 'similar' && param) viewId = 'view-similar-detail';
+  else if (view === 'similar') viewId = 'view-similar';
+  else viewId = 'view-overview';
+
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const el = document.getElementById(viewId);
+  if (el) el.classList.add('active');
+
+  if ((view === 'overview' || view === '') && currentView !== 'overview') renderOverview();
+  else if (view === 'heatmap' && currentView !== 'heatmap') renderHeatmap();
+  else if (view === 'dept' && !param && currentView !== 'dept-list') renderDeptList();
+  else if (view === 'dept' && param) renderDeptDetail(param);
+  else if (view === 'similar' && !param && currentView !== 'similar') renderSimilar();
+  else if (view === 'similar' && param) renderCourseDetail(param);
+
+  currentView = (view === 'overview' || view === '') ? 'overview'
+    : param ? view + '-detail'
+    : (view === 'dept' ? 'dept-list' : view);
+  currentParam = param;
+}
+
+window.addEventListener('hashchange', route);
+
+// ── Overview ──
+
+async function renderOverview() {
+  const el = $('#view-overview');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  const ov = await fetchJSON('overview.json');
+  const h = ov.headline;
+
+  let html = '';
+
+  // Headline stats
+  html += '<div class="overview-stats">';
+  html += `<div class="ov-stat"><div class="big">${h.totalCourses.toLocaleString()}</div><div class="label">Courses</div></div>`;
+  html += `<div class="ov-stat"><div class="big">${h.totalDepts}</div><div class="label">Departments</div></div>`;
+  html += `<div class="ov-stat"><div class="big">${h.totalInstructors.toLocaleString()}</div><div class="label">Instructors</div></div>`;
+  html += `<div class="ov-stat"><div class="big">${h.termsSpanned}</div><div class="label">Terms (${formatTermShort(h.firstTerm)}–${formatTermShort(h.lastTerm)})</div></div>`;
+  html += '</div>';
+
+  // Growth chart + growing departments
+  html += '<div class="ov-grid">';
+
+  // Growth chart (filter to fall/spring only for cleaner visual)
+  const majorTerms = ov.termTotals.filter(t => t.term.endsWith('01') || t.term.endsWith('08'));
+  if (majorTerms.length > 1) {
+    const maxC = Math.max(...majorTerms.map(t => t.courses), 1);
+    const barW = Math.max(12, Math.min(28, 450 / majorTerms.length));
+    const chartW = majorTerms.length * (barW + 3);
+    const chartH = 100;
+    const labelH = 14;
+
+    html += '<div class="ov-panel"><h3>Active courses per term <span style="font-weight:400;text-transform:none">(Fall &amp; Spring)</span></h3>';
+    html += `<div class="ov-chart"><svg viewBox="0 0 ${chartW} ${chartH + labelH + 4}" preserveAspectRatio="none">`;
+    majorTerms.forEach((t, i) => {
+      const x = i * (barW + 3);
+      const h = (t.courses / maxC) * chartH;
+      html += `<rect x="${x}" y="${chartH - h}" width="${barW}" height="${h}" fill="var(--red)" opacity="0.7"><title>${formatTerm(t.term)}: ${t.courses} courses</title></rect>`;
+      if (i === 0 || i === majorTerms.length - 1 || i % Math.max(1, Math.floor(majorTerms.length / 6)) === 0) {
+        html += `<text x="${x + barW / 2}" y="${chartH + labelH}" text-anchor="middle" font-size="7" fill="var(--gray)" font-family="system-ui">${formatTermShort(t.term)}</text>`;
+      }
+    });
+    html += '</svg></div>';
+    html += `<a href="#/heatmap" class="ov-peek">View schedule heatmap &rarr;</a>`;
+    html += '</div>';
+  }
+
+  // Fastest growing departments
+  html += '<div class="ov-panel"><h3>Most new courses <span style="font-weight:400;text-transform:none">(since ' + formatTermShort(ov.growthSince) + ')</span></h3>';
+  html += '<ul class="ov-list">';
+  ov.growingDepts.forEach(d => {
+    html += `<li><a href="#/dept/${escHtml(d.code)}" class="dept-link">${escHtml(d.name)}</a><span class="cnt">${d.new_courses}</span></li>`;
+  });
+  html += '</ul>';
+  html += `<a href="#/dept" class="ov-peek">All departments &rarr;</a>`;
+  html += '</div>';
+  html += '</div>'; // end ov-grid
+
+  // New courses + keywords
+  html += '<div class="ov-grid">';
+
+  // New courses sample
+  html += `<div class="ov-panel"><h3>New in ${formatTerm(ov.latestTerm)} <span style="font-weight:400;text-transform:none">(${ov.latestNewCount} new courses)</span></h3>`;
+  ov.latestNewSample.forEach(c => {
+    html += `<div class="ov-new-course">`;
+    html += `${courseLink(c.course_id, ov.latestTerm)} `;
+    html += `<span>${escHtml(c.title)}</span> `;
+    html += `<span class="nc-dept">${escHtml(c.department)}</span>`;
+    html += '</div>';
+  });
+  if (ov.latestNewCount > 8) {
+    html += `<a href="#/dept" class="ov-peek">Browse all departments &rarr;</a>`;
+  }
+  html += '</div>';
+
+  // Keywords + peak slot
+  html += '<div class="ov-panel">';
+  if (ov.topKeywords.length) {
+    html += '<h3>Trending in new course titles</h3>';
+    html += '<div class="ov-keywords">';
+    ov.topKeywords.forEach(([word, count]) => {
+      const size = 0.65 + Math.min(count / (ov.topKeywords[0][1] || 1), 1) * 0.35;
+      html += `<span class="kw-tag" style="font-size:${size.toFixed(2)}rem">${escHtml(word)}</span>`;
+    });
+    html += '</div>';
+  }
+  if (ov.peakSlot) {
+    html += `<div style="margin-top:1rem"><h3>Busiest time slot</h3>`;
+    html += `<div style="font-size:0.85rem">${escHtml(ov.peakSlot.days)} at ${escHtml(ov.peakSlot.time)} &mdash; <strong>${ov.peakSlot.count.toLocaleString()}</strong> sections across all terms</div>`;
+    html += `<a href="#/heatmap" class="ov-peek">Explore schedule &rarr;</a>`;
+    html += '</div>';
+  }
+  html += '</div>';
+  html += '</div>'; // end ov-grid
+
+  el.innerHTML = html;
+}
+
+// ── Heatmap ──
+
+let hmData = null;
+let hmLevel = '';
+
+async function renderHeatmap() {
+  const meta = await fetchJSON('meta.json');
+  const filtersEl = $('#hm-filters');
+
+  if (!filtersEl.innerHTML) {
+    filtersEl.innerHTML = `
+      <label>Term</label>
+      <select id="hm-term"><option value="all">All terms</option></select>
+      <label>Level</label>
+      <select id="hm-level">
+        <option value="">All</option>
+        <option value="Undergrad">Undergrad</option>
+        <option value="Grad">Grad</option>
+      </select>
+    `;
+    const termSel = $('#hm-term');
+    meta.terms.slice().reverse().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = formatTerm(t);
+      termSel.appendChild(o);
+    });
+    termSel.addEventListener('change', () => loadHeatmap(termSel.value));
+    $('#hm-level').addEventListener('change', e => { hmLevel = e.target.value; drawHeatmap(); });
+  }
+
+  await loadHeatmap('all');
+}
+
+async function loadHeatmap(term) {
+  const statsEl = $('#hm-stats');
+  statsEl.innerHTML = '<span>Loading...</span>';
+  hmData = await fetchJSON('heatmap/' + term + '.json');
+  drawHeatmap();
+}
+
+function drawHeatmap() {
+  const data = hmData;
+  const grid = hmLevel && data.byLevel[hmLevel] ? data.byLevel[hmLevel] : data.grid;
+  const maxCount = Math.max(1, ...grid.flat());
+
+  const statsEl = $('#hm-stats');
+  const termLabel = data.term === 'all' ? 'all terms' : formatTerm(data.term);
+  const levelLabel = hmLevel || 'all levels';
+  const total = grid.flat().reduce((a, b) => a + b, 0);
+  statsEl.innerHTML = `<span><strong>${total.toLocaleString()}</strong> section-slots across ${termLabel}, ${levelLabel}</span><span>Peak: <strong>${maxCount.toLocaleString()}</strong> sections in one slot</span>`;
+
+  const el = $('#hm-grid');
+  el.innerHTML = '';
+
+  // Header row
+  const corner = document.createElement('div');
+  corner.className = 'hm-header';
+  el.appendChild(corner);
+  DAY_LABELS.forEach(d => {
+    const h = document.createElement('div');
+    h.className = 'hm-header';
+    h.textContent = d;
+    el.appendChild(h);
+  });
+
+  // Rows
+  for (let slot = 0; slot < 30; slot++) {
+    const timeEl = document.createElement('div');
+    timeEl.className = 'hm-time';
+    timeEl.textContent = slotLabel(slot);
+    el.appendChild(timeEl);
+
+    for (let day = 0; day < 7; day++) {
+      const val = grid[day][slot];
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell' + (val === 0 ? ' empty' : '');
+
+      if (val > 0) {
+        const intensity = Math.pow(val / maxCount, 0.6);
+        cell.style.backgroundColor = `rgba(226, 24, 51, ${0.08 + intensity * 0.88})`;
+        if (intensity > 0.35) cell.style.color = '#fff';
+        else cell.style.color = 'var(--dark)';
+        cell.innerHTML = `<span class="count">${val}</span>`;
+      }
+
+      cell.dataset.day = day;
+      cell.dataset.slot = slot;
+      cell.addEventListener('mouseenter', showTooltip);
+      cell.addEventListener('mouseleave', hideTooltip);
+      el.appendChild(cell);
+    }
+  }
+}
+
+function showTooltip(e) {
+  const cell = e.currentTarget;
+  const day = +cell.dataset.day;
+  const slot = +cell.dataset.slot;
+  const val = hmData.grid[day][slot];
+  if (val === 0) return;
+
+  const ug = hmData.byLevel.Undergrad[day][slot];
+  const gr = hmData.byLevel.Grad[day][slot];
+
+  const tip = $('#tooltip');
+  tip.innerHTML = `<strong>${DAY_LABELS[day]} ${slotLabel(slot)}</strong><br>
+    ${val} sections<br>
+    Undergrad: ${ug} &middot; Grad: ${gr}`;
+  tip.classList.add('visible');
+
+  const rect = cell.getBoundingClientRect();
+  tip.style.left = (rect.right + 8) + 'px';
+  tip.style.top = (rect.top) + 'px';
+
+  const tipRect = tip.getBoundingClientRect();
+  if (tipRect.right > window.innerWidth - 10) {
+    tip.style.left = (rect.left - tipRect.width - 8) + 'px';
+  }
+}
+
+function hideTooltip() { $('#tooltip').classList.remove('visible'); }
+
+// ── Department List ──
+
+let deptIndex = null;
+let deptSort = { col: 'sections', dir: -1 };
+
+async function renderDeptList() {
+  const el = $('#view-dept');
+  el.innerHTML = '<div class="loading">Loading departments...</div>';
+
+  deptIndex = await fetchJSON('departments/_index.json');
+  drawDeptList();
+}
+
+function drawDeptList() {
+  const el = $('#view-dept');
+  const sorted = [...deptIndex].sort((a, b) => {
+    const av = a[deptSort.col], bv = b[deptSort.col];
+    if (typeof av === 'number') return (av - bv) * deptSort.dir;
+    return String(av).localeCompare(String(bv)) * deptSort.dir;
+  });
+
+  const searchVal = (el.querySelector('.dept-search') || {}).value || '';
+  const filtered = searchVal
+    ? sorted.filter(d => d.name.toLowerCase().includes(searchVal.toLowerCase()) || d.code.toLowerCase().includes(searchVal.toLowerCase()))
+    : sorted;
+
+  const cols = [
+    { key: 'code', label: 'Code' },
+    { key: 'name', label: 'Department' },
+    { key: 'courses', label: 'Courses', cls: 'num' },
+    { key: 'sections', label: 'Sections', cls: 'num' },
+    { key: 'terms', label: 'Terms', cls: 'num' },
+  ];
+
+  let html = `<div class="filters"><input type="text" class="dept-search" placeholder="Filter departments..." value="${escHtml(searchVal)}"></div>`;
+  html += '<table><thead><tr>';
+  cols.forEach(c => {
+    const arrow = deptSort.col === c.key ? (deptSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    html += `<th data-col="${c.key}" class="${c.cls || ''}">${c.label}${arrow}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  filtered.forEach(d => {
+    html += `<tr class="clickable" data-code="${escHtml(d.code)}">`;
+    html += `<td style="font-family:monospace;font-weight:600;color:var(--red)">${escHtml(d.code)}</td>`;
+    html += `<td>${escHtml(d.name)}</td>`;
+    html += `<td class="num">${d.courses}</td>`;
+    html += `<td class="num">${(d.sections || 0).toLocaleString()}</td>`;
+    html += `<td class="num">${d.terms}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  el.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (deptSort.col === col) deptSort.dir *= -1;
+      else { deptSort.col = col; deptSort.dir = col === 'name' || col === 'code' ? 1 : -1; }
+      drawDeptList();
+    });
+  });
+
+  el.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => location.hash = '#/dept/' + tr.dataset.code);
+  });
+
+  const searchInput = el.querySelector('.dept-search');
+  searchInput.addEventListener('input', drawDeptList);
+  searchInput.focus();
+}
+
+// ── Department Detail ──
+
+async function renderDeptDetail(code) {
+  const el = $('#view-dept-detail');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  let data;
+  try {
+    data = await fetchJSON('departments/' + code + '.json');
+  } catch {
+    el.innerHTML = '<div class="loading">Department not found.</div>';
+    return;
+  }
+
+  const meta = await fetchJSON('meta.json');
+  const courses = Object.entries(data.courses);
+  const stats = data.termStats.filter(s => s.courses > 0);
+  const latestTerm = meta.terms[meta.terms.length - 1] || '';
+
+  // Count active courses (ran at least once), new in latest term, discontinued
+  const activeCourses = courses.filter(([, c]) => Object.keys(c.terms).length > 0);
+  const staleCourses = activeCourses.filter(([, c]) => {
+    const last = c.lastTerm;
+    return last && last < latestTerm && last < '202501'; // not offered in last ~year
+  });
+
+  let html = `<a href="#/dept" class="back-link">&larr; All departments</a>`;
+  html += `<div class="dept-header"><h2>${escHtml(data.name)}</h2>`;
+  html += `<div class="sub">${escHtml(data.code)} &middot; ${activeCourses.length} courses offered &middot; ${stats.length} terms</div></div>`;
+
+  html += '<div class="dept-grid"><div>';
+
+  // ── Stacked bar chart: new vs existing per term ──
+  if (stats.length > 1) {
+    const maxCourses = Math.max(...stats.map(s => s.courses), 1);
+    const barW = Math.max(8, Math.min(24, 700 / stats.length));
+    const chartW = stats.length * (barW + 2);
+    const chartH = 120;
+    const labelH = 16;
+
+    html += '<div class="section-label">Courses per term <span style="font-weight:400;text-transform:none">&mdash; <span style="color:var(--red)">&#9632;</span> new &nbsp;<span style="color:var(--gray-light)">&#9632;</span> existing</span></div>';
+    html += `<div class="chart-wrap" style="overflow-x:auto"><svg viewBox="0 0 ${chartW} ${chartH + labelH + 4}" width="${chartW}" style="min-width:${chartW}px">`;
+
+    stats.forEach((s, i) => {
+      const x = i * (barW + 2);
+      const totalH = (s.courses / maxCourses) * chartH;
+      const newH = (s.new / maxCourses) * chartH;
+      const existH = totalH - newH;
+      const y0 = chartH - totalH;
+
+      // Existing (bottom, gray)
+      if (existH > 0) {
+        html += `<rect x="${x}" y="${y0}" width="${barW}" height="${existH}" fill="var(--gray-light)" opacity="0.4"><title>${formatTerm(s.term)}: ${s.existing} existing, ${s.new} new</title></rect>`;
+      }
+      // New (top, red)
+      if (newH > 0) {
+        html += `<rect x="${x}" y="${y0 + existH}" width="${barW}" height="${newH}" fill="var(--red)"><title>${formatTerm(s.term)}: ${s.new} new courses</title></rect>`;
+      }
+
+      // Label every ~4th term or first/last
+      if (i === 0 || i === stats.length - 1 || i % Math.max(1, Math.floor(stats.length / 8)) === 0) {
+        html += `<text x="${x + barW / 2}" y="${chartH + labelH}" text-anchor="middle" font-size="7" fill="var(--gray)" font-family="system-ui">${formatTermShort(s.term)}</text>`;
+      }
+    });
+
+    html += '</svg></div>';
+  }
+
+  // ── Recently added courses ──
+  const recentNew = [];
+  for (let i = stats.length - 1; i >= 0 && recentNew.length < 15; i--) {
+    const s = stats[i];
+    if (s.newCourses) {
+      s.newCourses.forEach(cid => {
+        const c = data.courses[cid];
+        if (c) recentNew.push({ id: cid, title: c.title, term: s.term, level: c.level });
+      });
+    }
+  }
+
+  if (recentNew.length) {
+    html += '<div class="section-label" style="margin-top:1rem">Recently added</div>';
+    html += '<table><thead><tr><th>Course</th><th>Title</th><th>First offered</th><th>Level</th></tr></thead><tbody>';
+    recentNew.slice(0, 15).forEach(c => {
+      const linkTerm = (data.courses[c.id] && data.courses[c.id].lastTerm) || latestTerm;
+      html += `<tr>`;
+      html += `<td>${courseLink(c.id, linkTerm)}</td>`;
+      html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${formatTermShort(c.term)}</td>`;
+      html += `<td>${escHtml(c.level || '')}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Long-running courses (most terms offered) ──
+  const longRunning = activeCourses
+    .map(([cid, c]) => ({ id: cid, ...c, termsActive: Object.keys(c.terms).length }))
+    .filter(c => c.termsActive >= 3)
+    .sort((a, b) => b.termsActive - a.termsActive)
+    .slice(0, 15);
+
+  if (longRunning.length) {
+    html += '<div class="section-label" style="margin-top:1rem">Longest-running courses</div>';
+    html += '<table><thead><tr><th>Course</th><th>Title</th><th>Terms</th><th>First</th><th>Last</th></tr></thead><tbody>';
+    longRunning.forEach(c => {
+      html += `<tr>`;
+      html += `<td>${courseLink(c.id, c.lastTerm)}</td>`;
+      html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${c.termsActive}</td>`;
+      html += `<td class="num">${formatTermShort(c.firstTerm)}</td>`;
+      html += `<td class="num">${formatTermShort(c.lastTerm)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Discontinued courses (not offered recently) ──
+  if (staleCourses.length) {
+    const staleList = staleCourses
+      .map(([cid, c]) => ({ id: cid, ...c }))
+      .sort((a, b) => (b.lastTerm || '').localeCompare(a.lastTerm || ''))
+      .slice(0, 15);
+
+    html += '<div class="section-label" style="margin-top:1rem">Discontinued <span style="font-weight:400;text-transform:none">&mdash; not offered since Spring 2025</span></div>';
+    html += '<table><thead><tr><th>Course</th><th>Title</th><th>Last offered</th><th>Level</th></tr></thead><tbody>';
+    staleList.forEach(c => {
+      html += `<tr style="opacity:0.6">`;
+      html += `<td>${courseLink(c.id, c.lastTerm)}</td>`;
+      html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${formatTermShort(c.lastTerm)}</td>`;
+      html += `<td>${escHtml(c.level || '')}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  html += '</div>';
+
+  // Sidebar
+  html += '<div class="dept-sidebar">';
+  if (data.instructors.length) {
+    html += '<h3>Top Instructors</h3><ul class="instructor-list">';
+    data.instructors.forEach(inst => {
+      html += `<li><span>${escHtml(inst.name)}</span><span class="cnt">${inst.count}</span></li>`;
+    });
+    html += '</ul>';
+  }
+  html += '</div></div>';
+
+  el.innerHTML = html;
+}
+
+// ── Similarity ──
+
+let simIndex = null;
+
+async function renderSimilar() {
+  const el = $('#view-similar');
+
+  if (!simIndex) {
+    el.innerHTML = '<div class="loading">Loading course index...</div>';
+    simIndex = await fetchJSON('similarity/_index.json');
+  }
+
+  const entries = Object.entries(simIndex);
+
+  el.innerHTML = `
+    <div class="search-wrap">
+      <input type="text" id="sim-search" placeholder="Search by course ID or title... e.g. CMSC131, machine learning" autofocus>
+      <div class="dropdown" id="sim-dropdown"></div>
+    </div>
+    <div class="stat-row"><span>${entries.length.toLocaleString()} courses indexed</span></div>
+    <div id="sim-hint" style="color:var(--gray);font-size:0.85rem;">Type a course ID or keyword to find similar courses.</div>
+  `;
+
+  const input = $('#sim-search');
+  const dropdown = $('#sim-dropdown');
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (q.length < 2) { dropdown.classList.remove('open'); return; }
+
+    const idPrefix = [], idContains = [], titleMatches = [];
+    for (const [id, meta] of entries) {
+      const idLow = id.toLowerCase();
+      if (idLow.startsWith(q)) idPrefix.push([id, meta]);
+      else if (idLow.includes(q)) idContains.push([id, meta]);
+      else if (meta.title && meta.title.toLowerCase().includes(q)) titleMatches.push([id, meta]);
+    }
+    const matches = [...idPrefix, ...idContains, ...titleMatches].slice(0, 20);
+
+    if (!matches.length) { dropdown.classList.remove('open'); return; }
+
+    dropdown.innerHTML = matches.map(([id, m]) =>
+      `<div class="dropdown-item" data-id="${escHtml(id)}">
+        <span class="di-id">${escHtml(id)}</span>
+        <span class="di-title">${escHtml(m.title)}</span>
+        <span class="di-dept">${escHtml(m.dept)}</span>
+      </div>`
+    ).join('');
+    dropdown.classList.add('open');
+
+    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        location.hash = '#/similar/' + item.dataset.id;
+        dropdown.classList.remove('open');
+      });
+    });
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const first = dropdown.querySelector('.dropdown-item');
+      if (first) { location.hash = '#/similar/' + first.dataset.id; dropdown.classList.remove('open'); }
+    }
+    if (e.key === 'Escape') dropdown.classList.remove('open');
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) dropdown.classList.remove('open');
+  });
+}
+
+async function renderCourseDetail(courseId) {
+  const el = $('#view-similar-detail');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  if (!simIndex) simIndex = await fetchJSON('similarity/_index.json');
+
+  const meta = simIndex[courseId];
+  if (!meta) { el.innerHTML = '<div class="loading">Course not found.</div>'; return; }
+
+  let neighbors;
+  try {
+    const data = await fetchJSON('similarity/neighbors/' + courseId + '.json');
+    neighbors = data.neighbors;
+  } catch {
+    el.innerHTML = '<div class="loading">No similarity data for this course.</div>';
+    return;
+  }
+
+  let html = `<a href="#/similar" class="back-link">← Search</a>`;
+  html += `<div class="course-detail">
+    <h2><span style="color:var(--red);font-family:monospace">${escHtml(courseId)}</span> ${escHtml(meta.title)}</h2>
+    <div class="cd-meta">${escHtml(meta.dept)} · ${escHtml(meta.level)} · ${escHtml(meta.credits)} credits</div>
+    ${meta.desc ? `<div class="cd-desc">${escHtml(meta.desc)}</div>` : ''}
+  </div>`;
+
+  html += '<div class="section-label">Most Similar Courses</div>';
+  html += '<div class="neighbors">';
+  neighbors.forEach(n => {
+    html += `<div class="neighbor-card" data-id="${escHtml(n.id)}">
+      <div class="nc-info">
+        <span class="nc-id">${escHtml(n.id)}</span>
+        <span class="nc-title">${escHtml(n.title)}</span><br>
+        <span class="nc-dept">${escHtml(n.dept)}</span>
+      </div>
+      <span class="score">${(n.score * 100).toFixed(1)}%</span>
+    </div>`;
+  });
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  el.querySelectorAll('.neighbor-card').forEach(card => {
+    card.addEventListener('click', () => location.hash = '#/similar/' + card.dataset.id);
+  });
+}
+
+// ── Init ──
+route();
+</script>
+</body>
+</html>
