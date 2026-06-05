@@ -416,6 +416,113 @@
     .ov-grid { grid-template-columns: 1fr; }
   }
 
+  /* Turnover */
+  .retention-bar {
+    display: inline-block;
+    height: 10px;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+  .retention-bar-bg {
+    display: inline-block;
+    height: 10px;
+    background: var(--light);
+    border-radius: 2px;
+    vertical-align: middle;
+    overflow: hidden;
+    position: relative;
+  }
+  .retention-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .turnover-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .turnover-stat {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.85rem;
+    text-align: center;
+  }
+  .turnover-stat .big {
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+  .turnover-stat .label {
+    font-size: 0.7rem;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .dept-turnover-panel {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  .dept-turnover-panel h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.75rem;
+  }
+  .turnover-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .turnover-detail-grid .td-stat {
+    text-align: center;
+    padding: 0.4rem;
+    border-radius: var(--radius);
+    background: var(--lighter);
+  }
+  .turnover-detail-grid .td-stat .val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+  .turnover-detail-grid .td-stat .lbl {
+    font-size: 0.65rem;
+    color: var(--gray);
+    text-transform: uppercase;
+  }
+  .turnover-course-lists {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
+  .turnover-course-lists h4 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gray);
+    margin-bottom: 0.35rem;
+  }
+  .turnover-course-lists ul {
+    list-style: none;
+    font-size: 0.8rem;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .turnover-course-lists li {
+    padding: 0.15rem 0;
+    border-bottom: 1px solid var(--light);
+  }
+
   .loading { text-align: center; padding: 2rem; color: var(--gray); font-size: 0.85rem; }
 
   @media (max-width: 768px) {
@@ -433,9 +540,12 @@
 
 <nav>
   <a href="#/" data-view="overview">Overview</a>
-  <a href="#/heatmap" data-view="heatmap">Schedule</a>
   <a href="#/dept" data-view="dept">Departments</a>
+  <a href="#/turnover" data-view="turnover">Turnover</a>
+  <a href="#/new" data-view="new">New Courses</a>
   <a href="#/similar" data-view="similar">Similarity</a>
+  <a href="#/seasonal" data-view="seasonal">Summer/Winter</a>
+  <a href="#/heatmap" data-view="heatmap">Schedule</a>
 </nav>
 
 <div class="container">
@@ -462,6 +572,15 @@
 
   <!-- Course Detail View -->
   <div id="view-similar-detail" class="view"></div>
+
+  <!-- New Courses View -->
+  <div id="view-new" class="view"></div>
+
+  <!-- Seasonal View -->
+  <div id="view-seasonal" class="view"></div>
+
+  <!-- Turnover View -->
+  <div id="view-turnover" class="view"></div>
 </div>
 
 <div class="tooltip" id="tooltip"></div>
@@ -506,6 +625,14 @@ function slotLabel(i) {
   return h + ':' + String(m).padStart(2, '0') + ap;
 }
 
+function retentionColor(pct) {
+  if (pct >= 80) return '#22c55e';
+  if (pct >= 60) return '#84cc16';
+  if (pct >= 40) return '#eab308';
+  if (pct >= 20) return '#f97316';
+  return 'var(--red)';
+}
+
 const DAYS = ['M','Tu','W','Th','F','Sa','Su'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -536,7 +663,10 @@ function route() {
     a.classList.toggle('active', v === view ||
       (view === '' && v === 'overview') ||
       (view === 'dept' && v === 'dept') ||
-      (view === 'similar' && v === 'similar'));
+      (view === 'similar' && v === 'similar') ||
+      (view === 'new' && v === 'new') ||
+      (view === 'turnover' && v === 'turnover') ||
+      (view === 'seasonal' && v === 'seasonal'));
   });
 
   // Determine which container to show
@@ -547,6 +677,9 @@ function route() {
   else if (view === 'dept') viewId = 'view-dept';
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-similar';
+  else if (view === 'new') viewId = 'view-new';
+  else if (view === 'seasonal') viewId = 'view-seasonal';
+  else if (view === 'turnover') viewId = 'view-turnover';
   else viewId = 'view-overview';
 
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -559,6 +692,9 @@ function route() {
   else if (view === 'dept' && param) renderDeptDetail(param);
   else if (view === 'similar' && !param && currentView !== 'similar') renderSimilar();
   else if (view === 'similar' && param) renderCourseDetail(param);
+  else if (view === 'new' && currentView !== 'new') renderNewCourses();
+  else if (view === 'seasonal' && currentView !== 'seasonal') renderSeasonal();
+  else if (view === 'turnover' && currentView !== 'turnover') renderTurnover();
 
   currentView = (view === 'overview' || view === '') ? 'overview'
     : param ? view + '-detail'
@@ -579,57 +715,15 @@ async function renderOverview() {
 
   let html = '';
 
-  // Headline stats
-  html += '<div class="overview-stats">';
-  html += `<div class="ov-stat"><div class="big">${h.totalCourses.toLocaleString()}</div><div class="label">Courses</div></div>`;
-  html += `<div class="ov-stat"><div class="big">${h.totalDepts}</div><div class="label">Departments</div></div>`;
-  html += `<div class="ov-stat"><div class="big">${h.totalInstructors.toLocaleString()}</div><div class="label">Instructors</div></div>`;
-  html += `<div class="ov-stat"><div class="big">${h.termsSpanned}</div><div class="label">Terms (${formatTermShort(h.firstTerm)}–${formatTermShort(h.lastTerm)})</div></div>`;
-  html += '</div>';
+  // Introduction
+  html += `<div style="margin-bottom:1.25rem;font-size:0.9rem;line-height:1.6;color:var(--dark);max-width:720px">`;
+  html += `<p>This site tracks course offerings at the University of Maryland from ${formatTerm(h.firstTerm)} through ${formatTerm(h.lastTerm)}, covering ${h.totalCourses.toLocaleString()} courses across ${h.totalDepts} departments. Browse new and dropped courses by department, compare <a href="#/turnover" style="color:var(--red)">curriculum turnover</a> rates, explore <a href="#/heatmap" style="color:var(--red)">scheduling patterns</a>, or find <a href="#/similar" style="color:var(--red)">similar courses</a> across departments.</p>`;
+  html += `</div>`;
 
-  // Growth chart + growing departments
-  html += '<div class="ov-grid">';
-
-  // Growth chart (filter to fall/spring only for cleaner visual)
-  const majorTerms = ov.termTotals.filter(t => t.term.endsWith('01') || t.term.endsWith('08'));
-  if (majorTerms.length > 1) {
-    const maxC = Math.max(...majorTerms.map(t => t.courses), 1);
-    const barW = Math.max(12, Math.min(28, 450 / majorTerms.length));
-    const chartW = majorTerms.length * (barW + 3);
-    const chartH = 100;
-    const labelH = 14;
-
-    html += '<div class="ov-panel"><h3>Active courses per term <span style="font-weight:400;text-transform:none">(Fall &amp; Spring)</span></h3>';
-    html += `<div class="ov-chart"><svg viewBox="0 0 ${chartW} ${chartH + labelH + 4}" preserveAspectRatio="none">`;
-    majorTerms.forEach((t, i) => {
-      const x = i * (barW + 3);
-      const h = (t.courses / maxC) * chartH;
-      html += `<rect x="${x}" y="${chartH - h}" width="${barW}" height="${h}" fill="var(--red)" opacity="0.7"><title>${formatTerm(t.term)}: ${t.courses} courses</title></rect>`;
-      if (i === 0 || i === majorTerms.length - 1 || i % Math.max(1, Math.floor(majorTerms.length / 6)) === 0) {
-        html += `<text x="${x + barW / 2}" y="${chartH + labelH}" text-anchor="middle" font-size="7" fill="var(--gray)" font-family="system-ui">${formatTermShort(t.term)}</text>`;
-      }
-    });
-    html += '</svg></div>';
-    html += `<a href="#/heatmap" class="ov-peek">View schedule heatmap &rarr;</a>`;
-    html += '</div>';
-  }
-
-  // Fastest growing departments
-  html += '<div class="ov-panel"><h3>Most new courses <span style="font-weight:400;text-transform:none">(since ' + formatTermShort(ov.growthSince) + ')</span></h3>';
-  html += '<ul class="ov-list">';
-  ov.growingDepts.forEach(d => {
-    html += `<li><a href="#/dept/${escHtml(d.code)}" class="dept-link">${escHtml(d.name)}</a><span class="cnt">${d.new_courses}</span></li>`;
-  });
-  html += '</ul>';
-  html += `<a href="#/dept" class="ov-peek">All departments &rarr;</a>`;
-  html += '</div>';
-  html += '</div>'; // end ov-grid
-
-  // New courses + keywords
-  html += '<div class="ov-grid">';
-
-  // New courses sample
-  html += `<div class="ov-panel"><h3>New in ${formatTerm(ov.latestTerm)} <span style="font-weight:400;text-transform:none">(${ov.latestNewCount} new courses)</span></h3>`;
+  // New courses (elevated, full width)
+  html += `<div class="ov-panel" style="margin-bottom:1.25rem">`;
+  html += `<h3>New in ${formatTerm(ov.latestTerm)} <span style="font-weight:400;text-transform:none">(${ov.latestNewCount} courses never previously offered)</span></h3>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.5rem">`;
   ov.latestNewSample.forEach(c => {
     html += `<div class="ov-new-course">`;
     html += `${courseLink(c.course_id, ov.latestTerm)} `;
@@ -637,30 +731,22 @@ async function renderOverview() {
     html += `<span class="nc-dept">${escHtml(c.department)}</span>`;
     html += '</div>';
   });
-  if (ov.latestNewCount > 8) {
-    html += `<a href="#/dept" class="ov-peek">Browse all departments &rarr;</a>`;
+  html += '</div>';
+  if (ov.latestNewCount > ov.latestNewSample.length) {
+    html += `<a href="#/new" class="ov-peek">All new courses by term &rarr;</a>`;
   }
   html += '</div>';
 
-  // Keywords + peak slot
-  html += '<div class="ov-panel">';
-  if (ov.topKeywords.length) {
-    html += '<h3>Trending in new course titles</h3>';
-    html += '<div class="ov-keywords">';
-    ov.topKeywords.forEach(([word, count]) => {
-      const size = 0.65 + Math.min(count / (ov.topKeywords[0][1] || 1), 1) * 0.35;
-      html += `<span class="kw-tag" style="font-size:${size.toFixed(2)}rem">${escHtml(word)}</span>`;
-    });
-    html += '</div>';
-  }
-  if (ov.peakSlot) {
-    html += `<div style="margin-top:1rem"><h3>Busiest time slot</h3>`;
-    html += `<div style="font-size:0.85rem">${escHtml(ov.peakSlot.days)} at ${escHtml(ov.peakSlot.time)} &mdash; <strong>${ov.peakSlot.count.toLocaleString()}</strong> sections across all terms</div>`;
-    html += `<a href="#/heatmap" class="ov-peek">Explore schedule &rarr;</a>`;
-    html += '</div>';
-  }
+  // Most new courses by department
+  html += `<div class="ov-panel">`;
+  html += '<h3>Most new courses by department <span style="font-weight:400;text-transform:none">(since ' + formatTerm(ov.growthSince) + ')</span></h3>';
+  html += '<ul class="ov-list">';
+  ov.growingDepts.forEach(d => {
+    html += `<li><a href="#/dept/${escHtml(d.code)}" class="dept-link">${escHtml(d.name)}</a><span class="cnt">${d.new_courses}</span></li>`;
+  });
+  html += '</ul>';
+  html += `<a href="#/dept" class="ov-peek">All departments &rarr;</a>`;
   html += '</div>';
-  html += '</div>'; // end ov-grid
 
   el.innerHTML = html;
 }
@@ -887,7 +973,9 @@ async function renderDeptDetail(code) {
 
   let html = `<a href="#/dept" class="back-link">&larr; All departments</a>`;
   html += `<div class="dept-header"><h2>${escHtml(data.name)}</h2>`;
-  html += `<div class="sub">${escHtml(data.code)} &middot; ${activeCourses.length} courses offered &middot; ${stats.length} terms</div></div>`;
+  const spPct = data.specialTopicsPct || 0;
+  const spCount = data.specialTopicsCount || 0;
+  html += `<div class="sub">${escHtml(data.code)} &middot; ${activeCourses.length} courses offered &middot; ${stats.length} terms &middot; ${spPct}% special topics (${spCount} of ${data.latestTermCourses || 0} in latest term)</div></div>`;
 
   html += '<div class="dept-grid"><div>';
 
@@ -925,6 +1013,62 @@ async function renderDeptDetail(code) {
     });
 
     html += '</svg></div>';
+  }
+
+  // ── Turnover panel ──
+  // Compare earliest and latest fall terms for this department
+  const deptFallTerms = stats.filter(s => s.term.endsWith('08')).map(s => s.term);
+  if (deptFallTerms.length >= 2) {
+    const tFrom = deptFallTerms[0];
+    const tTo = deptFallTerms[deptFallTerms.length - 1];
+
+    const isSpecialTopics = id => /[A-Za-z]$/.test(id);
+    const oldSet = new Set();
+    const newSet = new Set();
+    for (const [cid, c] of courses) {
+      if (isSpecialTopics(cid)) continue;
+      if (c.terms[tFrom]) oldSet.add(cid);
+      if (c.terms[tTo]) newSet.add(cid);
+    }
+
+    const retained = [...oldSet].filter(c => newSet.has(c));
+    const dropped = [...oldSet].filter(c => !newSet.has(c));
+    const added = [...newSet].filter(c => !oldSet.has(c));
+    const retPct = oldSet.size > 0 ? Math.round(retained.length * 1000 / oldSet.size) / 10 : 0;
+    const color = retentionColor(retPct);
+
+    html += `<div class="dept-turnover-panel">`;
+    html += `<h3>Curriculum turnover <span style="font-weight:400;text-transform:none">${formatTerm(tFrom)} → ${formatTerm(tTo)}</span></h3>`;
+    html += `<div style="font-size:0.75rem;color:var(--gray-light);margin-bottom:0.5rem">Non-special-topics courses only</div>`;
+    html += `<div class="turnover-detail-grid">`;
+    html += `<div class="td-stat"><div class="val">${retPct}%</div><div class="lbl">Retained</div></div>`;
+    html += `<div class="td-stat"><div class="val" style="color:#ef4444">${dropped.length}</div><div class="lbl">Dropped</div></div>`;
+    html += `<div class="td-stat"><div class="val" style="color:#22c55e">${added.length}</div><div class="lbl">Added</div></div>`;
+    html += `</div>`;
+    html += `<div style="margin-bottom:0.5rem"><span class="retention-bar-bg" style="width:100%;display:block;height:14px"><span class="retention-bar-fill" style="width:${retPct}%;background:${color};height:100%"></span></span></div>`;
+    html += `<div style="font-size:0.8rem;color:var(--gray)">${retained.length} of ${oldSet.size} courses from ${formatTerm(tFrom)} still offered in ${formatTerm(tTo)}; ${added.length} new courses added</div>`;
+
+    if (dropped.length > 0 || added.length > 0) {
+      html += '<div class="turnover-course-lists">';
+      if (dropped.length > 0) {
+        html += '<div><h4 style="color:#ef4444">Dropped courses</h4><ul>';
+        dropped.sort().forEach(cid => {
+          const c = data.courses[cid];
+          html += `<li>${courseLink(cid, tFrom)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
+        });
+        html += '</ul></div>';
+      }
+      if (added.length > 0) {
+        html += '<div><h4 style="color:#22c55e">Added courses</h4><ul>';
+        added.sort().forEach(cid => {
+          const c = data.courses[cid];
+          html += `<li>${courseLink(cid, tTo)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
+        });
+        html += '</ul></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
   }
 
   // ── Recently added courses ──
@@ -989,6 +1133,32 @@ async function renderDeptDetail(code) {
       html += `<tr style="opacity:0.6">`;
       html += `<td>${courseLink(c.id, c.lastTerm)}</td>`;
       html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${formatTermShort(c.lastTerm)}</td>`;
+      html += `<td>${escHtml(c.level || '')}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Seasonal-only courses (only offered in summer/winter, never fall/spring) ──
+  const seasonalOnly = activeCourses
+    .filter(([cid, c]) => {
+      const activeTerms = Object.keys(c.terms);
+      const hasMajor = activeTerms.some(t => t.endsWith('01') || t.endsWith('08'));
+      const hasSeasonal = activeTerms.some(t => t.endsWith('05') || t.endsWith('12'));
+      return !hasMajor && hasSeasonal;
+    })
+    .map(([cid, c]) => ({ id: cid, ...c }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (seasonalOnly.length) {
+    html += `<div class="section-label" style="margin-top:1rem">Seasonal only <span style="font-weight:400;text-transform:none">&mdash; ${seasonalOnly.length} courses offered only in summer or winter terms</span></div>`;
+    html += '<table><thead><tr><th>Course</th><th>Title</th><th>Terms</th><th>Last offered</th><th>Level</th></tr></thead><tbody>';
+    seasonalOnly.forEach(c => {
+      html += `<tr>`;
+      html += `<td>${courseLink(c.id, c.lastTerm)}</td>`;
+      html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${Object.keys(c.terms).length}</td>`;
       html += `<td class="num">${formatTermShort(c.lastTerm)}</td>`;
       html += `<td>${escHtml(c.level || '')}</td>`;
       html += '</tr>';
@@ -1126,6 +1296,398 @@ async function renderCourseDetail(courseId) {
 
   el.querySelectorAll('.neighbor-card').forEach(card => {
     card.addEventListener('click', () => location.hash = '#/similar/' + card.dataset.id);
+  });
+}
+
+// ── New Courses ──
+
+let newCoursesData = null;
+
+async function renderNewCourses() {
+  const el = $('#view-new');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  newCoursesData = await fetchJSON('new_courses.json');
+  const terms = newCoursesData.terms;
+  const defaultTerm = terms[terms.length - 1] || '';
+
+  let html = '<div class="filters">';
+  html += '<label>Term</label><select id="nc-term">';
+  terms.slice().reverse().forEach(t => {
+    html += `<option value="${t}" ${t === defaultTerm ? 'selected' : ''}>${formatTerm(t)}</option>`;
+  });
+  html += '</select>';
+  html += '</div>';
+  html += '<div id="nc-summary"></div>';
+  html += '<div id="nc-table"></div>';
+
+  el.innerHTML = html;
+  $('#nc-term').addEventListener('change', () => drawNewCourses($('#nc-term').value));
+  drawNewCourses(defaultTerm);
+}
+
+function drawNewCourses(term) {
+  const courses = newCoursesData.byTerm[term] || [];
+
+  const summaryEl = $('#nc-summary');
+  summaryEl.innerHTML = `<div class="stat-row"><span><strong>${courses.length}</strong> courses offered for the first time in ${formatTerm(term)}</span></div>`;
+
+  // Group by department
+  const byDept = {};
+  courses.forEach(c => {
+    const dept = c.department || 'Unknown';
+    if (!byDept[dept]) byDept[dept] = [];
+    byDept[dept].push(c);
+  });
+  const deptList = Object.entries(byDept).sort((a, b) => b[1].length - a[1].length);
+
+  let html = '<table><thead><tr>';
+  html += '<th>Course</th><th>Title</th><th>Department</th><th>Level</th>';
+  html += '</tr></thead><tbody>';
+
+  courses.sort((a, b) => a.course_id.localeCompare(b.course_id)).forEach(c => {
+    html += '<tr>';
+    html += `<td>${courseLink(c.course_id, term)}</td>`;
+    html += `<td>${escHtml(c.title || '')}</td>`;
+    html += `<td>${escHtml(c.department || '')}</td>`;
+    html += `<td>${escHtml(c.level || '')}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  $('#nc-table').innerHTML = html;
+}
+
+// ── Seasonal ──
+
+let seasonalData = null;
+let seasonalSort = { col: 'coveragePct', dir: -1 };
+
+async function renderSeasonal() {
+  const el = $('#view-seasonal');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  seasonalData = await fetchJSON('seasonal.json');
+
+  const preferredSummer = '202605';
+  const preferredWinter = '202512';
+
+  let html = '<div class="filters">';
+  html += '<label>Season</label><select id="se-season">';
+  html += '<option value="summer">Summer</option>';
+  html += '<option value="winter">Winter</option>';
+  html += '</select>';
+  html += '<label>Term</label><select id="se-term"></select>';
+  html += '<label style="margin-left:0.5rem">Min courses</label>';
+  html += '<select id="se-min"><option value="0">All</option><option value="5">5+</option><option value="10" selected>10+</option><option value="20">20+</option></select>';
+  html += '</div>';
+  html += '<div style="font-size:0.8rem;color:var(--gray);margin-bottom:0.75rem">Shows what percentage of each department\'s core courses (non-special-topics, from the preceding fall/spring term) are offered in the summer or winter session.</div>';
+  html += '<div id="se-summary"></div>';
+  html += '<div id="se-table"></div>';
+
+  el.innerHTML = html;
+
+  function populateTerms() {
+    const season = $('#se-season').value;
+    const terms = season === 'summer' ? seasonalData.summerTerms : seasonalData.winterTerms;
+    const preferred = season === 'summer' ? preferredSummer : preferredWinter;
+    const sel = $('#se-term');
+    sel.innerHTML = '';
+    terms.slice().reverse().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = formatTerm(t);
+      if (t === preferred) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!terms.includes(preferred) && terms.length > 0) {
+      sel.value = terms[terms.length - 1];
+    }
+  }
+
+  populateTerms();
+
+  const draw = () => drawSeasonal($('#se-term').value, +$('#se-min').value);
+  $('#se-season').addEventListener('change', () => { populateTerms(); draw(); });
+  $('#se-term').addEventListener('change', draw);
+  $('#se-min').addEventListener('change', draw);
+  draw();
+}
+
+function drawSeasonal(term, minCourses) {
+  const termData = seasonalData.byTerm[term];
+  if (!termData) {
+    $('#se-summary').innerHTML = '';
+    $('#se-table').innerHTML = '<div class="loading">No data for this term.</div>';
+    return;
+  }
+
+  const depts = termData.departments.filter(d => d.baseCourses >= minCourses);
+
+  // Summary
+  const totalBase = depts.reduce((s, d) => s + d.baseCourses, 0);
+  const totalCovered = depts.reduce((s, d) => s + d.coreInSeasonal, 0);
+  const avgCoverage = totalBase > 0 ? Math.round(totalCovered * 1000 / totalBase) / 10 : 0;
+  const totalSeasonal = depts.reduce((s, d) => s + d.seasonalCourses, 0);
+  const deptsOffering = depts.filter(d => d.seasonalCourses > 0).length;
+
+  $('#se-summary').innerHTML = `<div class="turnover-summary">
+    <div class="turnover-stat"><div class="big">${avgCoverage}%</div><div class="label">Avg core coverage</div></div>
+    <div class="turnover-stat"><div class="big">${totalSeasonal}</div><div class="label">Courses offered</div></div>
+    <div class="turnover-stat"><div class="big">${deptsOffering}</div><div class="label">Depts participating</div></div>
+    <div class="turnover-stat"><div class="big">${formatTerm(termData.baseline)}</div><div class="label">Baseline term</div></div>
+  </div>`;
+
+  // Sort
+  const sorted = [...depts].sort((a, b) => {
+    const av = a[seasonalSort.col], bv = b[seasonalSort.col];
+    if (typeof av === 'number') return (av - bv) * seasonalSort.dir;
+    return String(av).localeCompare(String(bv)) * seasonalSort.dir;
+  });
+
+  const cols = [
+    { key: 'name', label: 'Department' },
+    { key: 'baseCourses', label: 'Core', cls: 'num' },
+    { key: 'seasonalCourses', label: 'Offered', cls: 'num' },
+    { key: 'coreInSeasonal', label: 'Core offered', cls: 'num' },
+    { key: 'seasonalOnly', label: 'Seasonal only', cls: 'num' },
+    { key: 'coveragePct', label: 'Coverage', cls: 'num' },
+  ];
+
+  let html = '<table><thead><tr>';
+  cols.forEach(c => {
+    const arrow = seasonalSort.col === c.key ? (seasonalSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    html += `<th data-col="${c.key}" class="${c.cls || ''}">${c.label}${arrow}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  sorted.forEach(d => {
+    const barWidth = 80;
+    const color = retentionColor(d.coveragePct);
+    html += `<tr class="clickable" data-code="${escHtml(d.code)}">`;
+    html += `<td><a href="#/dept/${escHtml(d.code)}" style="color:var(--red);text-decoration:none;font-weight:500">${escHtml(d.name)}</a></td>`;
+    html += `<td class="num">${d.baseCourses}</td>`;
+    html += `<td class="num">${d.seasonalCourses}</td>`;
+    html += `<td class="num">${d.coreInSeasonal}</td>`;
+    html += `<td class="num" style="color:${d.seasonalOnly > 0 ? '#8b5cf6' : 'var(--gray-light)'}">${d.seasonalOnly}</td>`;
+    html += `<td class="num"><span class="retention-bar-bg" style="width:${barWidth}px"><span class="retention-bar-fill" style="width:${Math.min(d.coveragePct, 100)}%;background:${color}"></span></span> ${d.coveragePct}%</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  const tableEl = $('#se-table');
+  tableEl.innerHTML = html;
+
+  tableEl.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (seasonalSort.col === col) seasonalSort.dir *= -1;
+      else { seasonalSort.col = col; seasonalSort.dir = col === 'name' ? 1 : -1; }
+      drawSeasonal($('#se-term').value, +$('#se-min').value);
+    });
+  });
+
+  tableEl.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.tagName === 'A') return;
+      location.hash = '#/dept/' + tr.dataset.code;
+    });
+  });
+}
+
+// ── Turnover ──
+
+let turnoverData = null;
+let turnoverSort = { col: 'retentionPct', dir: 1 };
+
+function computeTurnover(data, fromTerm, toTerm) {
+  const renames = data.renames || {};
+  const reverseRenames = {};
+  for (const [old, nu] of Object.entries(renames)) reverseRenames[nu] = old;
+
+  const results = [];
+  for (const [deptName, dept] of Object.entries(data.departments)) {
+    const oldCourses = new Set(dept.terms[fromTerm] || []);
+    const newCourses = new Set(dept.terms[toTerm] || []);
+    if (oldCourses.size === 0 && newCourses.size === 0) continue;
+
+    const retained = [...oldCourses].filter(c => newCourses.has(c));
+    const dropped = [...oldCourses].filter(c => !newCourses.has(c));
+    const added = [...newCourses].filter(c => !oldCourses.has(c));
+
+    const retentionPct = oldCourses.size > 0
+      ? Math.round(retained.length * 1000 / oldCourses.size) / 10
+      : (newCourses.size > 0 ? 0 : 100);
+
+    results.push({
+      name: deptName,
+      code: dept.code,
+      oldCount: oldCourses.size,
+      newCount: newCourses.size,
+      retained: retained.length,
+      dropped: dropped.length,
+      added: added.length,
+      retentionPct,
+      droppedIds: dropped,
+      addedIds: added,
+      renamedFrom: reverseRenames[deptName] || null
+    });
+  }
+  return results;
+}
+
+async function renderTurnover() {
+  const el = $('#view-turnover');
+  el.innerHTML = '<div class="loading">Loading turnover data...</div>';
+
+  turnoverData = await fetchJSON('turnover.json');
+  const terms = turnoverData.majorTerms;
+
+  // Default: compare earliest fall to latest fall with substantial data
+  // Skip the most recent fall if it has far fewer departments than the one before it (partial data)
+  const fallTerms = terms.filter(t => t.endsWith('08'));
+  const springTerms = terms.filter(t => t.endsWith('01'));
+  let defaultTo = fallTerms[fallTerms.length - 1] || terms[terms.length - 1];
+  if (fallTerms.length >= 2) {
+    const latestDepts = Object.values(turnoverData.departments).filter(d => (d.terms[defaultTo] || []).length > 0).length;
+    const prevFall = fallTerms[fallTerms.length - 2];
+    const prevDepts = Object.values(turnoverData.departments).filter(d => (d.terms[prevFall] || []).length > 0).length;
+    if (latestDepts < prevDepts * 0.5) defaultTo = prevFall;
+  }
+  const defaultFrom = fallTerms.length >= 2 ? fallTerms[0] : terms[0];
+
+  let html = '<div class="filters">';
+  html += '<label>From</label><select id="to-from">';
+  terms.forEach(t => {
+    html += `<option value="${t}" ${t === defaultFrom ? 'selected' : ''}>${formatTerm(t)}</option>`;
+  });
+  html += '</select>';
+  html += '<label>To</label><select id="to-to">';
+  terms.forEach(t => {
+    html += `<option value="${t}" ${t === defaultTo ? 'selected' : ''}>${formatTerm(t)}</option>`;
+  });
+  html += '</select>';
+  html += '<label style="margin-left:0.5rem">Min courses</label>';
+  html += '<select id="to-min"><option value="0">All</option><option value="5">5+</option><option value="10" selected>10+</option><option value="20">20+</option><option value="50">50+</option></select>';
+  html += '<label style="margin-left:0.5rem">Retention</label>';
+  html += '<select id="to-op"><option value="">All</option><option value="<">&lt;</option><option value="=">=</option><option value=">">&gt;</option></select>';
+  html += '<input type="number" id="to-pct" min="0" max="100" value="50" style="width:55px"> <span style="font-size:0.8rem;color:var(--gray)">%</span>';
+  html += '</div>';
+  html += '<div style="font-size:0.8rem;color:var(--gray);margin-bottom:0.75rem">Based on non-special-topics courses only (excludes course IDs ending in a letter, such as HIST319T).</div>';
+  html += '<div id="turnover-summary"></div>';
+  html += '<div id="turnover-table"></div>';
+
+  el.innerHTML = html;
+
+  const draw = () => drawTurnover(
+    $('#to-from').value,
+    $('#to-to').value,
+    +$('#to-min').value,
+    $('#to-op').value,
+    +$('#to-pct').value
+  );
+  $('#to-from').addEventListener('change', draw);
+  $('#to-to').addEventListener('change', draw);
+  $('#to-min').addEventListener('change', draw);
+  $('#to-op').addEventListener('change', draw);
+  $('#to-pct').addEventListener('input', draw);
+  draw();
+}
+
+function drawTurnover(fromTerm, toTerm, minCourses, retOp, retPct) {
+  let results = computeTurnover(turnoverData, fromTerm, toTerm)
+    .filter(d => d.oldCount >= minCourses || d.newCount >= minCourses);
+
+  if (retOp) {
+    results = results.filter(d => {
+      if (retOp === '<') return d.retentionPct < retPct;
+      if (retOp === '>') return d.retentionPct > retPct;
+      if (retOp === '=') return d.retentionPct === retPct;
+      return true;
+    });
+  }
+
+  // Summary stats
+  const summaryEl = $('#turnover-summary');
+  const bothExist = results.filter(d => d.oldCount > 0 && d.newCount > 0);
+  const totalRetained = bothExist.reduce((s, d) => s + d.retained, 0);
+  const totalOld = bothExist.reduce((s, d) => s + d.oldCount, 0);
+  const avgRetention = totalOld > 0 ? Math.round(totalRetained * 1000 / totalOld) / 10 : 0;
+  const totalDropped = results.reduce((s, d) => s + d.dropped, 0);
+  const totalAdded = results.reduce((s, d) => s + d.added, 0);
+  const onlyNew = results.filter(d => d.oldCount === 0 && d.newCount > 0).length;
+
+  summaryEl.innerHTML = `<div class="turnover-summary">
+    <div class="turnover-stat"><div class="big">${avgRetention}%</div><div class="label">Avg retention</div></div>
+    <div class="turnover-stat"><div class="big">${totalDropped}</div><div class="label">Courses dropped</div></div>
+    <div class="turnover-stat"><div class="big">${totalAdded}</div><div class="label">Courses added</div></div>
+    <div class="turnover-stat"><div class="big">${onlyNew}</div><div class="label">New departments</div></div>
+  </div>`;
+
+  // Sort
+  const sorted = [...results].sort((a, b) => {
+    const av = a[turnoverSort.col], bv = b[turnoverSort.col];
+    if (typeof av === 'number') return (av - bv) * turnoverSort.dir;
+    return String(av).localeCompare(String(bv)) * turnoverSort.dir;
+  });
+
+  const cols = [
+    { key: 'name', label: 'Department' },
+    { key: 'oldCount', label: formatTermShort(fromTerm), cls: 'num' },
+    { key: 'newCount', label: formatTermShort(toTerm), cls: 'num' },
+    { key: 'retained', label: 'Retained', cls: 'num' },
+    { key: 'dropped', label: 'Dropped', cls: 'num' },
+    { key: 'added', label: 'Added', cls: 'num' },
+    { key: 'retentionPct', label: 'Retention', cls: 'num' },
+  ];
+
+  let html = '<table><thead><tr>';
+  cols.forEach(c => {
+    const arrow = turnoverSort.col === c.key ? (turnoverSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    html += `<th data-col="${c.key}" class="${c.cls || ''}">${c.label}${arrow}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  sorted.forEach(d => {
+    const barWidth = 80;
+    const color = retentionColor(d.retentionPct);
+    html += `<tr class="clickable" data-code="${escHtml(d.code)}">`;
+    html += `<td><a href="#/dept/${escHtml(d.code)}" style="color:var(--red);text-decoration:none;font-weight:500">${escHtml(d.name)}</a>`;
+    const prefixChanged = d.renamedFrom && d.retentionPct === 0 && d.oldCount > 0 && d.newCount > 0;
+    if (d.renamedFrom) html += `<div style="font-size:0.65rem;color:var(--gray-light)">formerly ${escHtml(d.renamedFrom)}${prefixChanged ? ' *' : ''}</div>`;
+    html += `</td>`;
+    html += `<td class="num">${d.oldCount}</td>`;
+    html += `<td class="num">${d.newCount}</td>`;
+    html += `<td class="num">${d.retained}</td>`;
+    html += `<td class="num" style="color:${d.dropped > 0 ? '#ef4444' : 'var(--gray-light)'}">${d.dropped}</td>`;
+    html += `<td class="num" style="color:${d.added > 0 ? '#22c55e' : 'var(--gray-light)'}">${d.added}</td>`;
+    html += `<td class="num"><span class="retention-bar-bg" style="width:${barWidth}px"><span class="retention-bar-fill" style="width:${d.retentionPct}%;background:${color}"></span></span> ${d.retentionPct}%</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  const tableEl = $('#turnover-table');
+  tableEl.innerHTML = html;
+
+  tableEl.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (turnoverSort.col === col) turnoverSort.dir *= -1;
+      else { turnoverSort.col = col; turnoverSort.dir = col === 'name' ? 1 : -1; }
+      drawTurnover(
+        $('#to-from').value,
+        $('#to-to').value,
+        +$('#to-min').value,
+        $('#to-op').value,
+        +$('#to-pct').value
+      );
+    });
+  });
+
+  tableEl.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.tagName === 'A') return;
+      location.hash = '#/dept/' + tr.dataset.code;
+    });
   });
 }
 
