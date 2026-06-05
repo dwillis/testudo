@@ -523,6 +523,61 @@
     border-bottom: 1px solid var(--light);
   }
 
+  /* Longstanding / Diff */
+  .diff-wrap {
+    padding: 0.5rem 0.75rem;
+    background: var(--lighter);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin: 0.35rem 0;
+  }
+  .diff-rm {
+    background: #fecaca;
+    color: #991b1b;
+    text-decoration: line-through;
+    padding: 0.05rem 0.2rem;
+    border-radius: 2px;
+  }
+  .diff-add {
+    background: #bbf7d0;
+    color: #166534;
+    padding: 0.05rem 0.2rem;
+    border-radius: 2px;
+  }
+  .ls-row {
+    border-bottom: 1px solid var(--light);
+    padding: 0.35rem 0;
+    cursor: pointer;
+  }
+  .ls-row:hover { background: var(--red-light); }
+  .ls-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .ls-header .ls-id {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-weight: 600;
+    color: var(--red);
+    min-width: 90px;
+  }
+  .ls-header .ls-title { flex: 1; font-size: 0.85rem; }
+  .ls-header .ls-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .ls-detail { display: none; padding: 0.35rem 0 0.5rem; }
+  .ls-row.open .ls-detail { display: block; }
+  .ls-old-title {
+    font-size: 0.75rem;
+    color: var(--gray);
+    margin-bottom: 0.25rem;
+  }
+
   .loading { text-align: center; padding: 2rem; color: var(--gray); font-size: 0.85rem; }
 
   @media (max-width: 768px) {
@@ -543,6 +598,7 @@
   <a href="#/dept" data-view="dept">Departments</a>
   <a href="#/turnover" data-view="turnover">Turnover</a>
   <a href="#/new" data-view="new">New Courses</a>
+  <a href="#/longstanding" data-view="longstanding">Changes</a>
   <a href="#/topics" data-view="topics">Special Topics</a>
   <a href="#/seasonal" data-view="seasonal">Summer/Winter</a>
   <a href="#/heatmap" data-view="heatmap">Schedule</a>
@@ -575,6 +631,9 @@
 
   <!-- New Courses View -->
   <div id="view-new" class="view"></div>
+
+  <!-- Longstanding View -->
+  <div id="view-longstanding" class="view"></div>
 
   <!-- Special Topics View -->
   <div id="view-topics" class="view"></div>
@@ -669,6 +728,7 @@ function route() {
       (view === 'similar' && v === 'overview') ||
       (view === 'new' && v === 'new') ||
       (view === 'turnover' && v === 'turnover') ||
+      (view === 'longstanding' && v === 'longstanding') ||
       (view === 'topics' && v === 'topics') ||
       (view === 'seasonal' && v === 'seasonal'));
   });
@@ -682,6 +742,7 @@ function route() {
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
+  else if (view === 'longstanding') viewId = 'view-longstanding';
   else if (view === 'topics') viewId = 'view-topics';
   else if (view === 'seasonal') viewId = 'view-seasonal';
   else if (view === 'turnover') viewId = 'view-turnover';
@@ -698,6 +759,7 @@ function route() {
   else if (view === 'similar' && !param) { location.hash = '#/'; return; }
   else if (view === 'similar' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
+  else if (view === 'longstanding' && currentView !== 'longstanding') renderLongstanding();
   else if (view === 'topics' && currentView !== 'topics') renderTopics();
   else if (view === 'seasonal' && currentView !== 'seasonal') renderSeasonal();
   else if (view === 'turnover' && currentView !== 'turnover') renderTurnover();
@@ -1437,6 +1499,124 @@ function drawNewCourses(term) {
   html += '</tbody></table>';
 
   $('#nc-table').innerHTML = html;
+}
+
+// ── Longstanding ──
+
+let lsData = null;
+let lsComparison = null;
+
+async function renderLongstanding() {
+  const el = $('#view-longstanding');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  lsData = await fetchJSON('longstanding.json');
+  lsComparison = lsData.comparisons[0];
+
+  let html = '<div class="filters">';
+  html += '<label>Comparison</label><select id="ls-pair">';
+  lsData.comparisons.forEach((c, i) => {
+    html += `<option value="${i}">${formatTerm(c.earlyTerm)} → ${formatTerm(c.latestTerm)}</option>`;
+  });
+  html += '</select>';
+  html += '<label>Department</label><select id="ls-dept"><option value="">All departments</option></select>';
+  html += '<label style="margin-left:0.5rem"><input type="checkbox" id="ls-changed" checked> Changed only</label>';
+  html += '</div>';
+  html += '<div id="ls-info"></div>';
+  html += '<div id="ls-list"></div>';
+
+  el.innerHTML = html;
+
+  function populateDepts() {
+    const comp = lsComparison;
+    const deptNames = Object.keys(comp.departments).sort();
+    const sel = $('#ls-dept');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">All departments</option>';
+    deptNames.forEach(d => {
+      const count = comp.departments[d].courses.length;
+      sel.innerHTML += `<option value="${escHtml(d)}" ${d === curVal ? 'selected' : ''}>${escHtml(d)} (${count})</option>`;
+    });
+  }
+
+  populateDepts();
+
+  const draw = () => drawLongstanding($('#ls-dept').value, $('#ls-changed').checked);
+  $('#ls-pair').addEventListener('change', e => {
+    lsComparison = lsData.comparisons[+e.target.value];
+    populateDepts();
+    draw();
+  });
+  $('#ls-dept').addEventListener('change', draw);
+  $('#ls-changed').addEventListener('change', draw);
+  draw();
+}
+
+function renderDiff(chunks) {
+  return chunks.map(c => {
+    if (c.t === 'eq') return `<span>${escHtml(c.v)}</span>`;
+    if (c.t === 'rm') return `<span class="diff-rm">${escHtml(c.v)}</span>`;
+    if (c.t === 'add') return `<span class="diff-add">${escHtml(c.v)}</span>`;
+    return '';
+  }).join(' ');
+}
+
+function drawLongstanding(dept, changedOnly) {
+  const comp = lsComparison;
+
+  $('#ls-info').innerHTML = `<div style="font-size:0.8rem;color:var(--gray);margin-bottom:0.75rem">${comp.totalCourses} courses offered in both ${formatTerm(comp.earlyTerm)} and ${formatTerm(comp.latestTerm)}. ${comp.changedCourses} have description changes. Click a course to see the diff.</div>`;
+
+  let courses = [];
+  if (dept) {
+    const d = comp.departments[dept];
+    if (d) courses = d.courses;
+  } else {
+    for (const d of Object.values(comp.departments)) {
+      courses = courses.concat(d.courses);
+    }
+    courses.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  if (changedOnly) courses = courses.filter(c => c.changed);
+
+  let html = `<div class="stat-row"><span><strong>${courses.length}</strong> courses${changedOnly ? ' with changes' : ''}${dept ? ' in ' + dept : ''}</span></div>`;
+
+  courses.forEach(c => {
+    const hasDiff = c.diff && c.diff.length > 0;
+    const hasTitle = c.oldTitle;
+    const badge = hasDiff
+      ? '<span class="ls-badge" style="background:#fef3c7;color:#92400e">Description changed</span>'
+      : hasTitle
+        ? '<span class="ls-badge" style="background:#dbeafe;color:#1e40af">Title changed</span>'
+        : '<span class="ls-badge" style="background:var(--light);color:var(--gray)">No changes</span>';
+
+    html += `<div class="ls-row" data-id="${escHtml(c.id)}">`;
+    html += `<div class="ls-header">`;
+    html += `<span class="ls-id">${escHtml(c.id)}</span>`;
+    html += `<span class="ls-title">${escHtml(c.title)}</span>`;
+    html += `<span>${escHtml(c.level || '')}</span>`;
+    html += badge;
+    html += `</div>`;
+
+    if (hasDiff || hasTitle) {
+      html += `<div class="ls-detail">`;
+      if (hasTitle) {
+        html += `<div class="ls-old-title">Title changed: <span class="diff-rm">${escHtml(c.oldTitle)}</span> → <span class="diff-add">${escHtml(c.title)}</span></div>`;
+      }
+      if (hasDiff) {
+        html += `<div class="diff-wrap">${renderDiff(c.diff)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+
+  const listEl = $('#ls-list');
+  listEl.innerHTML = html;
+
+  listEl.querySelectorAll('.ls-row').forEach(row => {
+    row.addEventListener('click', () => row.classList.toggle('open'));
+  });
 }
 
 // ── Special Topics ──

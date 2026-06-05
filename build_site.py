@@ -622,6 +622,115 @@ def build_new_courses(db, out_dir, meta):
     print(f"  {total} new courses across {len(major_terms)} fall/spring terms")
 
 
+def build_longstanding(db, out_dir, meta):
+    """Build longstanding.json with courses that exist in both an early and
+    late term, including description diffs.  Two comparison pairs:
+    Spring 2020 → Spring 2026  and  Fall 2020 → Fall 2025."""
+    import difflib
+    print("Building longstanding courses data...")
+
+    pairs = [
+        ('202001', '202601'),  # Spring 2020 → Spring 2026
+        ('202008', '202508'),  # Fall 2020 → Fall 2025
+    ]
+
+    def compute_diff(old_text, new_text):
+        old_text = old_text or ''
+        new_text = new_text or ''
+        if old_text == new_text:
+            return None
+        old_words = old_text.split()
+        new_words = new_text.split()
+        sm = difflib.SequenceMatcher(None, old_words, new_words)
+        chunks = []
+        for op, i1, i2, j1, j2 in sm.get_opcodes():
+            if op == 'equal':
+                text = ' '.join(old_words[i1:i2])
+                if len(text) > 80:
+                    text = text[:40] + ' ... ' + text[-40:]
+                chunks.append({'t': 'eq', 'v': text})
+            elif op == 'delete':
+                chunks.append({'t': 'rm', 'v': ' '.join(old_words[i1:i2])})
+            elif op == 'insert':
+                chunks.append({'t': 'add', 'v': ' '.join(new_words[j1:j2])})
+            elif op == 'replace':
+                chunks.append({'t': 'rm', 'v': ' '.join(old_words[i1:i2])})
+                chunks.append({'t': 'add', 'v': ' '.join(new_words[j1:j2])})
+        return chunks
+
+    def build_pair(early_term, latest_term):
+        early_courses = {r['course_id']: dict(r) for r in db.execute(
+            "SELECT course_id, title, department, level, credits, description "
+            "FROM courses WHERE term = ? AND section_count > 0",
+            (early_term,)).fetchall()}
+        latest_courses = {r['course_id']: dict(r) for r in db.execute(
+            "SELECT course_id, title, department, level, credits, description "
+            "FROM courses WHERE term = ? AND section_count > 0",
+            (latest_term,)).fetchall()}
+
+        common_ids = set(early_courses.keys()) & set(latest_courses.keys())
+        departments = {}
+        changed_count = 0
+
+        for cid in sorted(common_ids):
+            early = early_courses[cid]
+            latest = latest_courses[cid]
+            dept = latest['department'] or early['department'] or 'Unknown'
+            if dept not in departments:
+                departments[dept] = []
+
+            diff = compute_diff(early.get('description') or '',
+                                latest.get('description') or '')
+            has_change = diff is not None
+            if has_change:
+                changed_count += 1
+
+            title_changed = (early.get('title') or '') != (latest.get('title') or '')
+            entry = {
+                'id': cid,
+                'title': latest.get('title') or early.get('title') or '',
+                'level': latest.get('level') or '',
+                'credits': latest.get('credits') or '',
+                'changed': has_change or title_changed,
+            }
+            if title_changed:
+                entry['oldTitle'] = early.get('title') or ''
+            if diff:
+                entry['diff'] = diff
+            departments[dept].append(entry)
+
+        # Get dept codes
+        dept_codes = {}
+        for dept in departments:
+            row = db.execute(
+                "SELECT course_id FROM courses WHERE department = ? LIMIT 1",
+                (dept,)).fetchone()
+            if row:
+                m = re.match(r'^([A-Z]+)', row['course_id'])
+                dept_codes[dept] = m.group(1) if m else dept[:4].upper()
+
+        print(f"  {early_term} → {latest_term}: {len(common_ids)} courses, "
+              f"{changed_count} with description changes")
+
+        return {
+            'earlyTerm': early_term,
+            'latestTerm': latest_term,
+            'departments': {dept: {
+                'code': dept_codes.get(dept, ''),
+                'courses': courses
+            } for dept, courses in departments.items()},
+            'totalCourses': len(common_ids),
+            'changedCourses': changed_count,
+        }
+
+    comparisons = []
+    for early, latest in pairs:
+        comparisons.append(build_pair(early, latest))
+
+    result = {"comparisons": comparisons}
+    write_json(out_dir / "data" / "longstanding.json", result)
+
+
 def build_special_topics(db, out_dir, meta):
     """Build special_topics.json with special topics courses by term."""
     print("Building special topics data...")
@@ -932,6 +1041,7 @@ def main():
     build_new_courses(db, out_dir, meta)
     build_seasonal(db, out_dir, meta)
     build_special_topics(db, out_dir, meta)
+    build_longstanding(db, out_dir, meta)
 
     db.close()
     print("\nDone! Serve with: python -m http.server -d docs 8080")
