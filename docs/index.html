@@ -543,6 +543,7 @@
   <a href="#/dept" data-view="dept">Departments</a>
   <a href="#/turnover" data-view="turnover">Turnover</a>
   <a href="#/new" data-view="new">New Courses</a>
+  <a href="#/topics" data-view="topics">Special Topics</a>
   <a href="#/seasonal" data-view="seasonal">Summer/Winter</a>
   <a href="#/heatmap" data-view="heatmap">Schedule</a>
 </nav>
@@ -574,6 +575,9 @@
 
   <!-- New Courses View -->
   <div id="view-new" class="view"></div>
+
+  <!-- Special Topics View -->
+  <div id="view-topics" class="view"></div>
 
   <!-- Seasonal View -->
   <div id="view-seasonal" class="view"></div>
@@ -665,6 +669,7 @@ function route() {
       (view === 'similar' && v === 'overview') ||
       (view === 'new' && v === 'new') ||
       (view === 'turnover' && v === 'turnover') ||
+      (view === 'topics' && v === 'topics') ||
       (view === 'seasonal' && v === 'seasonal'));
   });
 
@@ -677,6 +682,7 @@ function route() {
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
+  else if (view === 'topics') viewId = 'view-topics';
   else if (view === 'seasonal') viewId = 'view-seasonal';
   else if (view === 'turnover') viewId = 'view-turnover';
   else viewId = 'view-overview';
@@ -692,6 +698,7 @@ function route() {
   else if (view === 'similar' && !param) { location.hash = '#/'; return; }
   else if (view === 'similar' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
+  else if (view === 'topics' && currentView !== 'topics') renderTopics();
   else if (view === 'seasonal' && currentView !== 'seasonal') renderSeasonal();
   else if (view === 'turnover' && currentView !== 'turnover') renderTurnover();
 
@@ -1430,6 +1437,82 @@ function drawNewCourses(term) {
   html += '</tbody></table>';
 
   $('#nc-table').innerHTML = html;
+}
+
+// ── Special Topics ──
+
+let topicsData = null;
+
+async function renderTopics() {
+  const el = $('#view-topics');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  topicsData = await fetchJSON('special_topics.json');
+  const terms = topicsData.terms;
+  const defaultTerm = terms[terms.length - 1] || '';
+
+  let html = '<div class="filters">';
+  html += '<label>Term</label><select id="st-term">';
+  terms.slice().reverse().forEach(t => {
+    html += `<option value="${t}" ${t === defaultTerm ? 'selected' : ''}>${formatTerm(t)}</option>`;
+  });
+  html += '</select>';
+  html += '<label>Department</label><select id="st-dept"><option value="">All</option></select>';
+  html += '<label style="margin-left:0.5rem"><input type="checkbox" id="st-new"> New only</label>';
+  html += '</div>';
+  html += '<div id="st-summary"></div>';
+  html += '<div id="st-table"></div>';
+
+  el.innerHTML = html;
+
+  // Populate department dropdown from the selected term's data
+  function populateDepts() {
+    const term = $('#st-term').value;
+    const courses = topicsData.byTerm[term] || [];
+    const depts = [...new Set(courses.map(c => c.dept))].sort();
+    const sel = $('#st-dept');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">All</option>';
+    depts.forEach(d => {
+      sel.innerHTML += `<option value="${escHtml(d)}" ${d === curVal ? 'selected' : ''}>${escHtml(d)}</option>`;
+    });
+  }
+
+  populateDepts();
+
+  const draw = () => drawTopics($('#st-term').value, $('#st-dept').value, $('#st-new').checked);
+  $('#st-term').addEventListener('change', () => { populateDepts(); draw(); });
+  $('#st-dept').addEventListener('change', draw);
+  $('#st-new').addEventListener('change', draw);
+  draw();
+}
+
+function drawTopics(term, dept, newOnly) {
+  let courses = topicsData.byTerm[term] || [];
+  if (dept) courses = courses.filter(c => c.dept === dept);
+  if (newOnly) courses = courses.filter(c => c.new);
+
+  const totalInTerm = (topicsData.byTerm[term] || []).length;
+  const newCount = courses.filter(c => c.new).length;
+
+  $('#st-summary').innerHTML = `<div class="stat-row"><span><strong>${courses.length}</strong> special topics courses${dept ? ' in ' + dept : ''} in ${formatTerm(term)} (${newCount} new)</span></div>`;
+
+  let html = '<table><thead><tr>';
+  html += '<th>Course</th><th>Title</th><th>Department</th><th>Level</th><th>New</th>';
+  html += '</tr></thead><tbody>';
+
+  courses.forEach(c => {
+    html += '<tr>';
+    html += `<td>${courseLink(c.id, term)}</td>`;
+    html += `<td>${escHtml(c.title || '')}</td>`;
+    html += `<td>${escHtml(c.dept || '')}</td>`;
+    html += `<td>${escHtml(c.level || '')}</td>`;
+    html += `<td>${c.new ? '<span style="color:#22c55e;font-weight:600">New</span>' : ''}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  $('#st-table').innerHTML = html;
 }
 
 // ── Seasonal ──

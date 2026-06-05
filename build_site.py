@@ -622,6 +622,67 @@ def build_new_courses(db, out_dir, meta):
     print(f"  {total} new courses across {len(major_terms)} fall/spring terms")
 
 
+def build_special_topics(db, out_dir, meta):
+    """Build special_topics.json with special topics courses by term."""
+    print("Building special topics data...")
+
+    major_terms = sorted(
+        t for t in meta['terms'] if t.endswith('01') or t.endswith('08')
+    )
+
+    rows = db.execute("""
+        SELECT course_id, title, department, level, term
+        FROM courses
+        WHERE section_count > 0
+          AND department IS NOT NULL
+          AND (term LIKE '%01' OR term LIKE '%08')
+        ORDER BY term DESC, course_id
+    """).fetchall()
+
+    by_term = {}
+    departments = set()
+    for r in rows:
+        cid = r['course_id']
+        if not is_special_topics(cid):
+            continue
+        if 'Special Topics' not in (r['title'] or ''):
+            continue
+        term = r['term']
+        if term not in by_term:
+            by_term[term] = []
+        by_term[term].append({
+            "id": cid,
+            "title": r['title'],
+            "dept": r['department'],
+            "level": r['level'],
+        })
+        departments.add(r['department'])
+
+    # First-seen lookup for special topics
+    first_seen = {}
+    for r in db.execute("""
+        SELECT course_id, MIN(term) as first_term
+        FROM courses WHERE section_count > 0 GROUP BY course_id
+    """).fetchall():
+        if is_special_topics(r['course_id']):
+            first_seen[r['course_id']] = r['first_term']
+
+    # Tag each course with whether it's new in that term
+    for term, courses in by_term.items():
+        for c in courses:
+            c['new'] = first_seen.get(c['id']) == term
+
+    result = {
+        "terms": major_terms,
+        "departments": sorted(departments),
+        "byTerm": by_term,
+    }
+
+    write_json(out_dir / "data" / "special_topics.json", result)
+    total = sum(len(v) for v in by_term.values())
+    print(f"  {total} special topics courses across {len(by_term)} terms")
+
+
 def build_seasonal(db, out_dir, meta):
     """Build seasonal.json with summer/winter course coverage by department."""
     print("Building seasonal data...")
@@ -870,6 +931,7 @@ def main():
     build_turnover(db, out_dir, meta)
     build_new_courses(db, out_dir, meta)
     build_seasonal(db, out_dir, meta)
+    build_special_topics(db, out_dir, meta)
 
     db.close()
     print("\nDone! Serve with: python -m http.server -d docs 8080")
