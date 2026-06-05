@@ -1,6 +1,6 @@
 __pycache__
-data
-data.zip
+/data
+/data.zip
 .pytest_cache
 backup.sh
 .DS_Store

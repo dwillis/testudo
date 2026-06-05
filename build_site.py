@@ -305,12 +305,28 @@ def build_single_department(db, dept_dir, dept_name, code):
         GROUP BY s.instructors ORDER BY count DESC LIMIT 15
     """, (dept_name,)).fetchall()]
 
+    # Compute special topics percentage (courses ending in a letter)
+    latest_term = all_terms[-1] if all_terms else None
+    if latest_term:
+        active_in_latest = [cid for cid, c in courses.items()
+                            if latest_term in c["terms"]]
+        special_count = sum(1 for cid in active_in_latest if is_special_topics(cid))
+        total_latest = len(active_in_latest)
+        special_pct = round(special_count * 100 / total_latest, 1) if total_latest > 0 else 0
+    else:
+        special_count = 0
+        total_latest = 0
+        special_pct = 0
+
     write_json(dept_dir / f"{code}.json", {
         "name": dept_name,
         "code": code,
         "courses": courses,
         "termStats": term_stats,
-        "instructors": instructors
+        "instructors": instructors,
+        "specialTopicsPct": special_pct,
+        "specialTopicsCount": special_count,
+        "latestTermCourses": total_latest,
     })
 
 
@@ -433,6 +449,263 @@ def build_similarity(db, out_dir):
     print(f"  Wrote {len(all_neighbors)} neighbor files + index")
 
 
+DEPT_RENAMES = {
+    "African American Studies": "African American and Africana Studies",
+    "Germanic Studies": "German Studies",
+    "Women's Studies": "Women, Gender, and Sexuality Studies",
+    "Film Studies": "Cinema and Media Studies",
+    "Survey Methodology": "Survey and Data Science",
+    "Federal and Global Semester": "Federal and Global Fellows",
+    "Embedded Systems & Internet of Things": "Cyber-Physical Systems Engineering",
+    "College Park Scholars-Business, Society, and Economy": "College Park Scholars-Business, Society, Entreprenrshp",
+    "Certificate in Latin American Studies": "Latin American and Caribbean Studies",
+    "Measurement, Statistics, and Evaluation": "Quantitative Methodology: Measurement and Statistics",
+}
+
+
+def is_special_topics(course_id):
+    """A course is special topics/variant if its ID ends in a letter."""
+    return course_id and course_id[-1:].isalpha()
+
+
+def build_turnover(db, out_dir, meta):
+    """Build turnover.json with per-department course sets by term for client-side comparison.
+    Only includes non-special-topics courses (IDs ending in digits) to measure
+    core curriculum change."""
+    print("Building turnover data...")
+
+    # Only fall and spring terms (skip summer/winter for cleaner comparison)
+    major_terms = sorted(
+        t for t in meta['terms'] if t.endswith('01') or t.endswith('08')
+    )
+
+    # For each department, collect the set of course_ids offered per major term
+    # Exclude special topics (course IDs ending in a letter)
+    rows = db.execute("""
+        SELECT department, term, course_id
+        FROM courses
+        WHERE section_count > 0
+          AND department IS NOT NULL
+          AND (term LIKE '%01' OR term LIKE '%08')
+        ORDER BY department, term
+    """).fetchall()
+
+    dept_terms = {}  # {dept: {term: [course_ids]}}
+    dept_codes = {}
+    for r in rows:
+        if is_special_topics(r['course_id']):
+            continue
+        dept = r['department']
+        term = r['term']
+        if dept not in dept_terms:
+            dept_terms[dept] = {}
+        if term not in dept_terms[dept]:
+            dept_terms[dept][term] = []
+        dept_terms[dept][term].append(r['course_id'])
+
+    # Get dept codes
+    for dept in dept_terms:
+        row = db.execute(
+            "SELECT course_id FROM courses WHERE department = ? LIMIT 1",
+            (dept,)
+        ).fetchone()
+        if row:
+            m = re.match(r'^([A-Z]+)', row['course_id'])
+            dept_codes[dept] = m.group(1) if m else dept[:4].upper()
+        else:
+            dept_codes[dept] = dept[:4].upper()
+
+    # Merge renamed departments: combine course lists under the new name
+    reverse_renames = {v: k for k, v in DEPT_RENAMES.items()}
+    merged_dept_terms = {}
+    for dept, terms_data in dept_terms.items():
+        # Map old name to new name
+        canonical = DEPT_RENAMES.get(dept, dept)
+        if canonical not in merged_dept_terms:
+            merged_dept_terms[canonical] = {}
+        for term, cids in terms_data.items():
+            if term not in merged_dept_terms[canonical]:
+                merged_dept_terms[canonical][term] = []
+            merged_dept_terms[canonical][term].extend(cids)
+
+    # Deduplicate course lists per term (in case both old and new dept existed)
+    for dept in merged_dept_terms:
+        for term in merged_dept_terms[dept]:
+            merged_dept_terms[dept][term] = list(set(merged_dept_terms[dept][term]))
+
+    # Get codes for merged departments (prefer new name's code)
+    merged_codes = {}
+    for dept in merged_dept_terms:
+        if dept in dept_codes:
+            merged_codes[dept] = dept_codes[dept]
+        elif dept in reverse_renames and reverse_renames[dept] in dept_codes:
+            merged_codes[dept] = dept_codes[reverse_renames[dept]]
+        else:
+            merged_codes[dept] = dept[:4].upper()
+
+    # Build compact output: dept -> {code, terms: {term: [course_ids]}}
+    departments = {}
+    for dept, terms_data in merged_dept_terms.items():
+        departments[dept] = {
+            "code": merged_codes.get(dept, ''),
+            "terms": terms_data
+        }
+
+    turnover = {
+        "majorTerms": major_terms,
+        "departments": departments,
+        "renames": DEPT_RENAMES
+    }
+
+    write_json(out_dir / "data" / "turnover.json", turnover)
+    print(f"  {len(departments)} departments, {len(major_terms)} fall/spring terms")
+
+
+def build_new_courses(db, out_dir, meta):
+    """Build new_courses.json with first-ever courses by term."""
+    print("Building new courses data...")
+
+    # For every course, find the first term it appeared
+    first_seen = {}
+    for row in db.execute("""
+        SELECT course_id, MIN(term) as first_term
+        FROM courses WHERE section_count > 0 GROUP BY course_id
+    """).fetchall():
+        first_seen[row['course_id']] = row['first_term']
+
+    # Group courses by their first term
+    by_term = {}
+    for row in db.execute("""
+        SELECT course_id, title, department, level, credits, term
+        FROM courses WHERE section_count > 0
+        ORDER BY course_id
+    """).fetchall():
+        cid = row['course_id']
+        ft = first_seen.get(cid)
+        if ft == row['term'] and ft not in by_term.get(cid, set()):
+            if ft not in by_term:
+                by_term[ft] = []
+            by_term[ft].append({
+                "course_id": row['course_id'],
+                "title": row['title'],
+                "department": row['department'],
+                "level": row['level'],
+                "credits": row['credits'],
+            })
+            # Mark so we don't double-add
+            if not hasattr(by_term, '_seen'):
+                by_term['_seen'] = set()
+
+    # Deduplicate (a course only appears once per term)
+    clean = {}
+    for term, courses in by_term.items():
+        seen = set()
+        deduped = []
+        for c in courses:
+            if c['course_id'] not in seen:
+                seen.add(c['course_id'])
+                deduped.append(c)
+        clean[term] = deduped
+
+    # Only include fall/spring terms
+    major_terms = sorted(
+        t for t in meta['terms'] if t.endswith('01') or t.endswith('08')
+    )
+
+    result = {
+        "terms": major_terms,
+        "byTerm": {t: clean.get(t, []) for t in major_terms}
+    }
+
+    write_json(out_dir / "data" / "new_courses.json", result)
+    total = sum(len(v) for v in result['byTerm'].values())
+    print(f"  {total} new courses across {len(major_terms)} fall/spring terms")
+
+
+def build_seasonal(db, out_dir, meta):
+    """Build seasonal.json with summer/winter course coverage by department."""
+    print("Building seasonal data...")
+
+    # Summer terms end in '05', winter in '12'
+    summer_terms = sorted(t for t in meta['terms'] if t.endswith('05'))
+    winter_terms = sorted(t for t in meta['terms'] if t.endswith('12'))
+    all_terms = sorted(summer_terms + winter_terms)
+
+    # For each summer/winter term, find the baseline (nearest preceding fall/spring)
+    major_terms = sorted(t for t in meta['terms'] if t.endswith('01') or t.endswith('08'))
+
+    def get_baseline(term):
+        preceding = [t for t in major_terms if t < term]
+        return preceding[-1] if preceding else None
+
+    # Collect non-special-topics courses per department per term
+    rows = db.execute("""
+        SELECT department, term, course_id
+        FROM courses
+        WHERE section_count > 0 AND department IS NOT NULL
+    """).fetchall()
+
+    dept_term_courses = {}  # {dept: {term: set(course_ids)}}
+    for r in rows:
+        if is_special_topics(r['course_id']):
+            continue
+        dept = r['department']
+        term = r['term']
+        if dept not in dept_term_courses:
+            dept_term_courses[dept] = {}
+        if term not in dept_term_courses[dept]:
+            dept_term_courses[dept][term] = set()
+        dept_term_courses[dept][term].add(r['course_id'])
+
+    # Get dept codes
+    dept_codes = {}
+    for dept in dept_term_courses:
+        row = db.execute(
+            "SELECT course_id FROM courses WHERE department = ? LIMIT 1",
+            (dept,)
+        ).fetchone()
+        if row:
+            m = re.match(r'^([A-Z]+)', row['course_id'])
+            dept_codes[dept] = m.group(1) if m else dept[:4].upper()
+
+    # Build per-term seasonal data
+    by_term = {}
+    for term in all_terms:
+        baseline = get_baseline(term)
+        if not baseline:
+            continue
+        depts = []
+        for dept, term_courses in dept_term_courses.items():
+            base_courses = term_courses.get(baseline, set())
+            seasonal_courses = term_courses.get(term, set())
+            if not base_courses:
+                continue
+            overlap = base_courses & seasonal_courses
+            seasonal_only = seasonal_courses - base_courses
+            depts.append({
+                "name": dept,
+                "code": dept_codes.get(dept, ''),
+                "baseCourses": len(base_courses),
+                "seasonalCourses": len(seasonal_courses),
+                "coreInSeasonal": len(overlap),
+                "seasonalOnly": len(seasonal_only),
+                "coveragePct": round(len(overlap) * 100 / len(base_courses), 1),
+            })
+        by_term[term] = {
+            "baseline": baseline,
+            "departments": depts
+        }
+
+    seasonal = {
+        "summerTerms": summer_terms,
+        "winterTerms": winter_terms,
+        "byTerm": by_term
+    }
+
+    write_json(out_dir / "data" / "seasonal.json", seasonal)
+    print(f"  {len(summer_terms)} summer terms, {len(winter_terms)} winter terms")
+
+
 def build_overview(db, out_dir, meta):
     """Build overview.json with university-wide trends for the landing page."""
     import string
@@ -467,7 +740,7 @@ def build_overview(db, out_dir, meta):
     if not latest_major:
         latest_major = terms[-1]
 
-    # New courses in the latest major term
+    # New courses: course ID never seen before in the dataset
     first_seen = {}
     for row in db.execute("""
         SELECT course_id, MIN(term) as first_term
@@ -483,23 +756,33 @@ def build_overview(db, out_dir, meta):
     """, (latest_major,)).fetchall():
         if first_seen.get(row['course_id']) == latest_major:
             latest_new.append(dict(row))
-    # Skip generic titles
-    interesting_new = [c for c in latest_new if not c['title'].startswith(('Directed', 'Independent', 'Thesis', 'Dissertation'))]
+    # Skip generic titles for the sample
+    interesting_new = [c for c in latest_new if not c['title'].startswith(('Directed', 'Independent', 'Thesis', 'Dissertation', 'Special Topics', 'Selected Topics'))]
 
-    # Fastest growing departments (most new courses in last 4 major terms)
-    recent_cutoff = sorted([t for t in terms if t.endswith('01') or t.endswith('08')])[-4:]
-    cutoff_term = recent_cutoff[0] if recent_cutoff else terms[-1]
-    growing_depts = [dict(r) for r in db.execute("""
-        SELECT c.department as name, COUNT(DISTINCT c.course_id) as new_courses
+    # Fastest growing departments (most new non-special-topics courses since Spring 2020)
+    cutoff_term = '202001'
+    all_growing = [dict(r) for r in db.execute("""
+        SELECT c.department as name, c.course_id
         FROM courses c
         JOIN (
             SELECT course_id, MIN(term) as first_term
             FROM courses WHERE section_count > 0 GROUP BY course_id
         ) f ON c.course_id = f.course_id
         WHERE f.first_term >= ? AND c.section_count > 0
-        GROUP BY c.department
-        ORDER BY new_courses DESC LIMIT 10
     """, (cutoff_term,)).fetchall()]
+
+    # Count only non-special-topics courses per department (deduplicated)
+    dept_new_ids = {}
+    for r in all_growing:
+        if is_special_topics(r['course_id']):
+            continue
+        if r['name'] not in dept_new_ids:
+            dept_new_ids[r['name']] = set()
+        dept_new_ids[r['name']].add(r['course_id'])
+    dept_new_counts = {name: len(ids) for name, ids in dept_new_ids.items()}
+    growing_depts = [{"name": name, "new_courses": count}
+                     for name, count in sorted(dept_new_counts.items(),
+                                               key=lambda x: x[1], reverse=True)[:10]]
 
     # Get dept codes for linking
     for d in growing_depts:
@@ -551,7 +834,7 @@ def build_overview(db, out_dir, meta):
         "termTotals": term_totals,
         "latestTerm": latest_major,
         "latestNewCount": len(latest_new),
-        "latestNewSample": interesting_new[:8],
+        "latestNewSample": interesting_new[:12],
         "growingDepts": growing_depts,
         "growthSince": cutoff_term,
         "peakSlot": peak_stat,
@@ -584,6 +867,9 @@ def main():
     build_heatmap(db, out_dir, meta['terms'])
     build_departments(db, out_dir)
     build_similarity(db, out_dir)
+    build_turnover(db, out_dir, meta)
+    build_new_courses(db, out_dir, meta)
+    build_seasonal(db, out_dir, meta)
 
     db.close()
     print("\nDone! Serve with: python -m http.server -d docs 8080")

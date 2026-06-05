@@ -543,7 +543,6 @@
   <a href="#/dept" data-view="dept">Departments</a>
   <a href="#/turnover" data-view="turnover">Turnover</a>
   <a href="#/new" data-view="new">New Courses</a>
-  <a href="#/similar" data-view="similar">Similarity</a>
   <a href="#/seasonal" data-view="seasonal">Summer/Winter</a>
   <a href="#/heatmap" data-view="heatmap">Schedule</a>
 </nav>
@@ -663,7 +662,7 @@ function route() {
     a.classList.toggle('active', v === view ||
       (view === '' && v === 'overview') ||
       (view === 'dept' && v === 'dept') ||
-      (view === 'similar' && v === 'similar') ||
+      (view === 'similar' && v === 'overview') ||
       (view === 'new' && v === 'new') ||
       (view === 'turnover' && v === 'turnover') ||
       (view === 'seasonal' && v === 'seasonal'));
@@ -676,7 +675,7 @@ function route() {
   else if (view === 'dept' && param) viewId = 'view-dept-detail';
   else if (view === 'dept') viewId = 'view-dept';
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
-  else if (view === 'similar') viewId = 'view-similar';
+  else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
   else if (view === 'seasonal') viewId = 'view-seasonal';
   else if (view === 'turnover') viewId = 'view-turnover';
@@ -690,7 +689,7 @@ function route() {
   else if (view === 'heatmap' && currentView !== 'heatmap') renderHeatmap();
   else if (view === 'dept' && !param && currentView !== 'dept-list') renderDeptList();
   else if (view === 'dept' && param) renderDeptDetail(param);
-  else if (view === 'similar' && !param && currentView !== 'similar') renderSimilar();
+  else if (view === 'similar' && !param) { location.hash = '#/'; return; }
   else if (view === 'similar' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
   else if (view === 'seasonal' && currentView !== 'seasonal') renderSeasonal();
@@ -717,7 +716,7 @@ async function renderOverview() {
 
   // Introduction
   html += `<div style="margin-bottom:1.25rem;font-size:0.9rem;line-height:1.6;color:var(--dark);max-width:720px">`;
-  html += `<p>This site tracks course offerings at the University of Maryland from ${formatTerm(h.firstTerm)} through ${formatTerm(h.lastTerm)}, covering ${h.totalCourses.toLocaleString()} courses across ${h.totalDepts} departments. Browse new and dropped courses by department, compare <a href="#/turnover" style="color:var(--red)">curriculum turnover</a> rates, explore <a href="#/heatmap" style="color:var(--red)">scheduling patterns</a>, or find <a href="#/similar" style="color:var(--red)">similar courses</a> across departments.</p>`;
+  html += `<p>This site tracks course offerings at the University of Maryland from ${formatTerm(h.firstTerm)} through ${formatTerm(h.lastTerm)}, covering ${h.totalCourses.toLocaleString()} courses across ${h.totalDepts} departments. Browse new and dropped courses by department, compare <a href="#/turnover" style="color:var(--red)">curriculum turnover</a> rates, explore <a href="#/heatmap" style="color:var(--red)">scheduling patterns</a>, or find similar courses across departments.</p>`;
   html += `</div>`;
 
   // New courses (elevated, full width)
@@ -737,6 +736,15 @@ async function renderOverview() {
   }
   html += '</div>';
 
+  // Two-column: similarity search + growing departments
+  html += '<div class="ov-grid">';
+
+  // Similarity search
+  html += `<div class="ov-panel">`;
+  html += '<h3>Find similar courses</h3>';
+  html += '<div class="search-wrap" style="max-width:100%"><input type="text" id="ov-sim-search" placeholder="Search by course ID or title..." style="width:100%"><div class="dropdown" id="ov-sim-dropdown"></div></div>';
+  html += '</div>';
+
   // Most new courses by department
   html += `<div class="ov-panel">`;
   html += '<h3>Most new courses by department <span style="font-weight:400;text-transform:none">(since ' + formatTerm(ov.growthSince) + ')</span></h3>';
@@ -748,7 +756,65 @@ async function renderOverview() {
   html += `<a href="#/dept" class="ov-peek">All departments &rarr;</a>`;
   html += '</div>';
 
+  html += '</div>'; // end ov-grid
+
   el.innerHTML = html;
+
+  // Wire up similarity search on overview
+  initOverviewSimilarity();
+}
+
+async function initOverviewSimilarity() {
+  if (!simIndex) simIndex = await fetchJSON('similarity/_index.json');
+  const entries = Object.entries(simIndex);
+
+  const input = $('#ov-sim-search');
+  const dropdown = $('#ov-sim-dropdown');
+  if (!input) return;
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (q.length < 2) { dropdown.classList.remove('open'); return; }
+
+    const idPrefix = [], idContains = [], titleMatches = [];
+    for (const [id, meta] of entries) {
+      const idLow = id.toLowerCase();
+      if (idLow.startsWith(q)) idPrefix.push([id, meta]);
+      else if (idLow.includes(q)) idContains.push([id, meta]);
+      else if (meta.title && meta.title.toLowerCase().includes(q)) titleMatches.push([id, meta]);
+    }
+    const matches = [...idPrefix, ...idContains, ...titleMatches].slice(0, 12);
+
+    if (!matches.length) { dropdown.classList.remove('open'); return; }
+
+    dropdown.innerHTML = matches.map(([id, m]) =>
+      `<div class="dropdown-item" data-id="${escHtml(id)}">
+        <span class="di-id">${escHtml(id)}</span>
+        <span class="di-title">${escHtml(m.title)}</span>
+        <span class="di-dept">${escHtml(m.dept)}</span>
+      </div>`
+    ).join('');
+    dropdown.classList.add('open');
+
+    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        location.hash = '#/similar/' + item.dataset.id;
+        dropdown.classList.remove('open');
+      });
+    });
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const first = dropdown.querySelector('.dropdown-item');
+      if (first) { location.hash = '#/similar/' + first.dataset.id; dropdown.classList.remove('open'); }
+    }
+    if (e.key === 'Escape') dropdown.classList.remove('open');
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) dropdown.classList.remove('open');
+  });
 }
 
 // ── Heatmap ──
@@ -877,24 +943,37 @@ function hideTooltip() { $('#tooltip').classList.remove('visible'); }
 
 let deptIndex = null;
 let deptSort = { col: 'sections', dir: -1 };
+const RENAMED_DEPTS = new Set([
+  'African American Studies', 'Germanic Studies', "Women's Studies", 'Film Studies',
+  'Survey Methodology', 'Federal and Global Semester',
+  'Embedded Systems & Internet of Things',
+  'College Park Scholars-Business, Society, and Economy',
+  'Certificate in Latin American Studies',
+  'Measurement, Statistics, and Evaluation',
+]);
 
 async function renderDeptList() {
   const el = $('#view-dept');
-  el.innerHTML = '<div class="loading">Loading departments...</div>';
+  el.innerHTML = `<div class="filters"><input type="text" class="dept-search" placeholder="Filter departments..." value=""></div><div id="dept-table-wrap"></div>`;
 
   deptIndex = await fetchJSON('departments/_index.json');
+
+  el.querySelector('.dept-search').addEventListener('input', drawDeptList);
   drawDeptList();
 }
 
 function drawDeptList() {
   const el = $('#view-dept');
-  const sorted = [...deptIndex].sort((a, b) => {
+  const searchInput = el.querySelector('.dept-search');
+  const searchVal = searchInput ? searchInput.value : '';
+
+  const nonRenamed = deptIndex.filter(d => !RENAMED_DEPTS.has(d.name));
+  const sorted = [...nonRenamed].sort((a, b) => {
     const av = a[deptSort.col], bv = b[deptSort.col];
     if (typeof av === 'number') return (av - bv) * deptSort.dir;
     return String(av).localeCompare(String(bv)) * deptSort.dir;
   });
 
-  const searchVal = (el.querySelector('.dept-search') || {}).value || '';
   const filtered = searchVal
     ? sorted.filter(d => d.name.toLowerCase().includes(searchVal.toLowerCase()) || d.code.toLowerCase().includes(searchVal.toLowerCase()))
     : sorted;
@@ -904,11 +983,9 @@ function drawDeptList() {
     { key: 'name', label: 'Department' },
     { key: 'courses', label: 'Courses', cls: 'num' },
     { key: 'sections', label: 'Sections', cls: 'num' },
-    { key: 'terms', label: 'Terms', cls: 'num' },
   ];
 
-  let html = `<div class="filters"><input type="text" class="dept-search" placeholder="Filter departments..." value="${escHtml(searchVal)}"></div>`;
-  html += '<table><thead><tr>';
+  let html = '<table><thead><tr>';
   cols.forEach(c => {
     const arrow = deptSort.col === c.key ? (deptSort.dir === 1 ? ' ↑' : ' ↓') : '';
     html += `<th data-col="${c.key}" class="${c.cls || ''}">${c.label}${arrow}</th>`;
@@ -921,13 +998,14 @@ function drawDeptList() {
     html += `<td>${escHtml(d.name)}</td>`;
     html += `<td class="num">${d.courses}</td>`;
     html += `<td class="num">${(d.sections || 0).toLocaleString()}</td>`;
-    html += `<td class="num">${d.terms}</td>`;
     html += '</tr>';
   });
   html += '</tbody></table>';
-  el.innerHTML = html;
 
-  el.querySelectorAll('th').forEach(th => {
+  const tableWrap = el.querySelector('#dept-table-wrap');
+  tableWrap.innerHTML = html;
+
+  tableWrap.querySelectorAll('th').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
       if (deptSort.col === col) deptSort.dir *= -1;
@@ -936,13 +1014,9 @@ function drawDeptList() {
     });
   });
 
-  el.querySelectorAll('tr.clickable').forEach(tr => {
+  tableWrap.querySelectorAll('tr.clickable').forEach(tr => {
     tr.addEventListener('click', () => location.hash = '#/dept/' + tr.dataset.code);
   });
-
-  const searchInput = el.querySelector('.dept-search');
-  searchInput.addEventListener('input', drawDeptList);
-  searchInput.focus();
 }
 
 // ── Department Detail ──
@@ -1271,7 +1345,7 @@ async function renderCourseDetail(courseId) {
     return;
   }
 
-  let html = `<a href="#/similar" class="back-link">← Search</a>`;
+  let html = `<a href="#/" class="back-link">← Back</a>`;
   html += `<div class="course-detail">
     <h2><span style="color:var(--red);font-family:monospace">${escHtml(courseId)}</span> ${escHtml(meta.title)}</h2>
     <div class="cd-meta">${escHtml(meta.dept)} · ${escHtml(meta.level)} · ${escHtml(meta.credits)} credits</div>
