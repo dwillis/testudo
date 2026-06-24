@@ -1,6 +1,7 @@
 """HTML parsing functions for the testudo scraper."""
 
 import re
+import time
 import datetime
 import logging
 from typing import List, Optional, Generator
@@ -15,11 +16,19 @@ logger = logging.getLogger(__name__)
 class TestudoParser:
     """Parser for testudo course data."""
     
-    def __init__(self, config: ScraperConfig):
+    def __init__(self, config: ScraperConfig, rate_limiter=None):
         self.config = config
+        self.rate_limiter = rate_limiter
         self.session = HTMLSession()
         self.session.headers['user-agent'] = config.user_agent
         self._syllabus_cache = {}  # Cache syllabus results per department
+
+    def _throttle(self) -> None:
+        """Pace outbound requests: shared limiter if set, else fixed delay."""
+        if self.rate_limiter is not None:
+            self.rate_limiter.acquire()
+        elif self.config.request_delay:
+            time.sleep(self.config.request_delay)
     
     @retry_on_failure(max_retries=3, base_delay=1.0)
     def get_terms(self, active_only: bool = True, term: Optional[str] = None) -> List[str]:
@@ -71,8 +80,9 @@ class TestudoParser:
         """Get all courses for a department and term."""
         url = f"{self.config.base_url}/{term}/{department.id}"
         logger.info(f"Fetching courses from {url}")
-        
+
         try:
+            self._throttle()
             r = self.session.get(url)
             r.raise_for_status()
             
@@ -248,7 +258,8 @@ class TestudoParser:
         try:
             url = f"{self.config.base_url}/{term}/sections?courseIds={course_id}"
             logger.debug(f"Fetching sections for {course_id} from {url}")
-            
+
+            self._throttle()
             r = self.session.get(url)
             r.raise_for_status()
             r.html.encoding = r.encoding
@@ -290,11 +301,6 @@ class TestudoParser:
                     
         except Exception as e:
             logger.error(f"Error getting sections for {course_id}: {e}")
-        
-        # Be nice and sleep between requests
-        if self.config.request_delay:
-            import time
-            time.sleep(self.config.request_delay)
         
         logger.debug(f"Successfully parsed {len(sections)} sections for {course_id}")
         return sections
