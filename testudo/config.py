@@ -16,7 +16,9 @@ class ScraperConfig:
     data_dir: str = "data"
     log_level: str = "INFO"
     extract_syllabi: bool = False  # Enable syllabus extraction using browser automation
-    
+    workers: int = 8                      # worker threads for full scrape
+    requests_per_second: float = 5.0      # global request-rate cap
+
     # Test mode settings
     test_max_courses: int = 3
     test_department: str = "AAAS"

@@ -14,6 +14,11 @@ class TestScraperConfig:
         assert config.default_term == "202508"
         assert config.request_delay == 1.0
 
+    def test_parallel_defaults(self):
+        config = ScraperConfig()
+        assert config.workers == 8
+        assert config.requests_per_second == 5.0
+
 class TestModels:
     """Test the data models."""
     
