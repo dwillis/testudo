@@ -73,6 +73,20 @@ Examples:
     )
     
     parser.add_argument(
+        '--workers',
+        type=int,
+        default=8,
+        help='Number of worker threads for full scrape (default: 8, 1 = sequential)'
+    )
+
+    parser.add_argument(
+        '--rate',
+        type=float,
+        default=5.0,
+        help='Max total requests per second across workers (default: 5.0)'
+    )
+
+    parser.add_argument(
         '--to-sqlite',
         metavar='DATABASE',
         help='Convert existing JSON files to SQLite database'
@@ -160,7 +174,9 @@ Examples:
         data_dir=args.data_dir,
         request_delay=args.delay,
         log_level=log_level,
-        extract_syllabi=args.extract_syllabi
+        extract_syllabi=args.extract_syllabi,
+        workers=args.workers,
+        requests_per_second=args.rate
     )
     
     if args.term:
