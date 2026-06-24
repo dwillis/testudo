@@ -118,6 +118,24 @@ class TestUtils:
         assert determine_course_level("AAAS500") == "Grad"
         assert determine_course_level("AAAS700") == "Grad"
 
+class TestScrapingStats:
+    """Test ScrapingStats merging for parallel workers."""
+
+    def test_merge_sums_counters(self):
+        from testudo import ScrapingStats
+        a = ScrapingStats(start_time=0.0, total_courses=3,
+                          successful_courses=2, failed_courses=1,
+                          departments_processed=1)
+        b = ScrapingStats(start_time=0.0, total_courses=5,
+                          successful_courses=5, failed_courses=0,
+                          departments_processed=1)
+        a.merge(b)
+        assert a.total_courses == 8
+        assert a.successful_courses == 7
+        assert a.failed_courses == 1
+        assert a.departments_processed == 2
+
+
 @pytest.fixture
 def mock_config():
     """Create a test configuration."""

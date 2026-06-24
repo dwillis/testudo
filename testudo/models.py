@@ -74,3 +74,10 @@ class ScrapingStats:
         """Calculate elapsed time in seconds."""
         import time
         return time.time() - self.start_time
+
+    def merge(self, other: "ScrapingStats") -> None:
+        """Add another stats object's counters into this one."""
+        self.total_courses += other.total_courses
+        self.successful_courses += other.successful_courses
+        self.failed_courses += other.failed_courses
+        self.departments_processed += other.departments_processed
