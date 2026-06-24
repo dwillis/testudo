@@ -7,9 +7,12 @@ import logging
 from typing import Optional, List
 from pathlib import Path
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from .config import ScraperConfig
 from .models import Department, Course, ScrapingStats
 from .parser import TestudoParser
+from .rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +61,72 @@ class TestudoScraper:
             logger.error(f"Error in test mode: {e}")
     
     def scrape_full(self, term: Optional[str] = None) -> None:
-        """Run a full scrape of all departments."""
+        """Run a full scrape of all departments (threaded across departments)."""
         terms = self.parser.get_terms(active_only=True, term=term)
-        
+
         for term in terms:
             logger.info(f"Starting scrape for term {term}")
             term_start = time.time()
-            
+
             try:
                 departments = self.parser.get_departments()
                 logger.info(f"Found {len(departments)} departments to process")
-                
-                for i, dept in enumerate(departments, 1):
-                    self._scrape_department(dept, term, i, len(departments))
-                    
             except Exception as e:
                 logger.error(f"Error processing term {term}: {e}")
                 continue
-            
+
+            if self.config.workers <= 1:
+                for i, dept in enumerate(departments, 1):
+                    self._scrape_department(dept, term, i, len(departments))
+            else:
+                self._scrape_term_parallel(departments, term)
+
             term_time = time.time() - term_start
             logger.info(f"Completed term {term} in {term_time:.1f}s")
+
+    def _scrape_term_parallel(self, departments, term: str) -> None:
+        """Scrape all departments for a term using a thread pool."""
+        limiter = RateLimiter(rate=self.config.requests_per_second)
+        total = len(departments)
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=self.config.workers) as executor:
+            futures = {
+                executor.submit(self._scrape_department_worker, dept, term, limiter): dept
+                for dept in departments
+            }
+            try:
+                for future in as_completed(futures):
+                    completed += 1
+                    dept_id, local_stats, error = future.result()
+                    if error is not None:
+                        logger.error(f"Department {dept_id} failed: {error}")
+                    self.stats.merge(local_stats)
+                    logger.info(
+                        f"Completed {completed}/{total}: {dept_id} "
+                        f"({local_stats.successful_courses} courses)"
+                    )
+            except KeyboardInterrupt:
+                logger.warning("Interrupted; cancelling remaining departments...")
+                for f in futures:
+                    f.cancel()
+                raise
+
+    def _scrape_department_worker(self, dept: Department, term: str, limiter: RateLimiter):
+        """Worker: scrape one department with its own parser and local stats."""
+        local_stats = ScrapingStats(start_time=time.time())
+        parser = TestudoParser(self.config, rate_limiter=limiter)
+        try:
+            for course in parser.get_courses(dept, term):
+                local_stats.total_courses += 1
+                if course and self._save_course(course, term):
+                    local_stats.successful_courses += 1
+                else:
+                    local_stats.failed_courses += 1
+            local_stats.departments_processed += 1
+            return (dept.id, local_stats, None)
+        except Exception as e:
+            return (dept.id, local_stats, e)
     
     def scrape_department(self, department_id: str, term: Optional[str] = None) -> None:
         """Scrape a single department."""
