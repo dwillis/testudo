@@ -100,6 +100,30 @@ uv run python cli.py --to-csv courses.csv --data-dir data/202501
 uv run python cli.py --help
 ```
 
+#### Parallel Scraping
+
+A full scrape (`--term` without `--department`/`--test`) runs departments
+concurrently. A single shared token-bucket rate limiter caps the *total*
+request rate against Testudo, so politeness depends on the rate budget rather
+than the number of workers.
+
+```bash
+# Defaults: 8 worker threads, ~5 total requests/sec
+uv run python cli.py --term 202508
+
+# Tune concurrency and the global request-rate cap
+uv run python cli.py --term 202508 --workers 12 --rate 8
+
+# Force the original sequential behavior (one department at a time)
+uv run python cli.py --term 202508 --workers 1
+```
+
+- `--workers N` — number of department worker threads (default: 8; `1` = sequential).
+- `--rate N` — maximum total requests per second across all workers (default: 5.0).
+
+Parallelism applies only to full scrapes; `--department` and `--test` already
+target a single department and run sequentially.
+
 ### Data Export Options
 
 #### SQLite Database Generation
