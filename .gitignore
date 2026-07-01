@@ -8,3 +8,4 @@ backup.sh
 .venv/
 *.db
 *.pkl
+.claude/

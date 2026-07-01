@@ -282,6 +282,28 @@ The semantic search uses:
 
 This approach provides efficient semantic search without requiring heavy ML models or external APIs. The embeddings capture both course titles and descriptions, enabling natural language queries like "courses about machine learning" or "web programming classes."
 
+### Course Explorer Static Site
+
+`build_site.py` reads a SQLite course database (like the one produced by `--to-sqlite`) and generates a static, browsable site — department pages, an enrollment heatmap, course similarity, turnover, new/seasonal/special-topics course lists — as JSON data files plus HTML under an output directory (`docs/` by default).
+
+```bash
+# Build the site from courses.db into docs/
+uv run build_site.py
+
+# Use a different database or output directory
+uv run build_site.py --db courses.db --out site
+
+# Serve the generated site locally
+python -m http.server -d docs 8080
+```
+
+The script is self-contained (uses `uv run` inline script dependencies) and requires no setup beyond having a populated SQLite database. Options:
+
+```
+--db DB     SQLite database path (default: courses.db)
+--out DIR   Output directory (default: docs)
+```
+
 ### Python API
 
 ```python
@@ -312,11 +334,12 @@ scraper.print_stats()
 ```
 testudo/
 ├── cli.py                           # Modern command-line interface
-├── testudo.py                       # Original script (still functional)
 ├── semantic_search.py               # Semantic search CLI
 ├── csv_to_db.py                     # CSV to SQLite converter
 ├── generate_embeddings_tfidf.py     # TF-IDF embedding generator
 ├── generate_embeddings.py           # Sentence-transformer embeddings (alternative)
+├── generate_embeddings_llm.py       # nomic-embed-text embeddings via llm + ollama (alternative)
+├── build_site.py                    # Static course explorer site generator
 ├── testudo/                         # Main package
 │   ├── config.py                   # Configuration and settings
 │   ├── models.py                   # Data models (Course, Section, Department)
