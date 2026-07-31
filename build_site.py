@@ -194,7 +194,7 @@ def make_empty_grid():
     return [[0] * NUM_SLOTS for _ in range(7)]
 
 
-def build_departments(db, out_dir):
+def build_departments(db, out_dir, name_to_slug):
     print("Building department data...")
     dept_dir = out_dir / "data" / "departments"
 
@@ -224,7 +224,7 @@ def build_departments(db, out_dir):
     print(f"  {len(index)} departments in index")
 
     for entry in index:
-        build_single_department(db, dept_dir, entry['name'], entry['code'])
+        build_single_department(db, dept_dir, entry['name'], entry['code'], name_to_slug)
 
     print(f"  Wrote {len(index)} department detail files")
 
@@ -241,7 +241,7 @@ def dept_to_code(db, dept_name):
     return dept_name[:4].upper()
 
 
-def build_single_department(db, dept_dir, dept_name, code):
+def build_single_department(db, dept_dir, dept_name, code, name_to_slug):
     course_rows = db.execute("""
         SELECT course_id, title, level, credits, term, section_count
         FROM courses WHERE department = ?
@@ -297,13 +297,20 @@ def build_single_department(db, dept_dir, dept_name, code):
             "newCourses": [] if is_baseline else new_this_term[:10]
         })
 
-    instructors = [dict(r) for r in db.execute("""
-        SELECT s.instructors as name, COUNT(*) as count
+    instructor_rows = db.execute("""
+        SELECT s.instructors
         FROM sections s
         JOIN courses c ON s.course_id = c.course_id AND s.term = c.term
-        WHERE c.department = ? AND s.instructors != ''
-        GROUP BY s.instructors ORDER BY count DESC LIMIT 15
-    """, (dept_name,)).fetchall()]
+        WHERE c.department = ? AND s.instructors != '' AND s.instructors != 'Instructor: TBA'
+    """, (dept_name,)).fetchall()
+    instructor_counts = {}
+    for r in instructor_rows:
+        for name in [n.strip() for n in r['instructors'].split(',') if n.strip()]:
+            instructor_counts[name] = instructor_counts.get(name, 0) + 1
+    instructors = [
+        {"name": name, "count": count, "slug": name_to_slug.get(name)}
+        for name, count in sorted(instructor_counts.items(), key=lambda kv: -kv[1])[:15]
+    ]
 
     # Compute special topics percentage (courses ending in a letter)
     latest_term = all_terms[-1] if all_terms else None
@@ -328,6 +335,128 @@ def build_single_department(db, dept_dir, dept_name, code):
         "specialTopicsCount": special_count,
         "latestTermCourses": total_latest,
     })
+
+
+def slugify(text):
+    text = re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
+    return text or 'x'
+
+
+def compute_instructor_data(db):
+    """Split raw comma-joined instructor strings into individual instructors,
+    assign each a primary department (most sections taught) and a unique slug.
+    Returns (entries, name_to_slug) where entries is a list of
+    (name, primary_dept, code, slug, rows)."""
+    rows = db.execute("""
+        SELECT s.term, s.course_id, s.section_id, s.instructors, s.days, s.start_time,
+               s.end_time, s.building, s.room, c.title, c.department
+        FROM sections s
+        JOIN courses c ON s.course_id = c.course_id AND s.term = c.term
+        WHERE s.instructors != '' AND s.instructors != 'Instructor: TBA'
+    """).fetchall()
+
+    dept_code_cache = {}
+
+    def code_for_dept(dept_name):
+        if dept_name not in dept_code_cache:
+            dept_code_cache[dept_name] = dept_to_code(db, dept_name)
+        return dept_code_cache[dept_name]
+
+    instructors = {}  # name -> {"dept_counts": {dept: n}, "rows": [row, ...]}
+    for r in rows:
+        names = [n.strip() for n in r['instructors'].split(',') if n.strip()]
+        for name in names:
+            inst = instructors.setdefault(name, {"dept_counts": {}, "rows": []})
+            dept = r['department'] or ''
+            inst["dept_counts"][dept] = inst["dept_counts"].get(dept, 0) + 1
+            inst["rows"].append(r)
+
+    entries = []
+    for name, data in instructors.items():
+        primary_dept = max(data["dept_counts"], key=lambda d: data["dept_counts"][d])
+        code = code_for_dept(primary_dept)
+        base_slug = slugify(f"{code}-{name}")
+        entries.append((name, primary_dept, code, base_slug, data["rows"]))
+
+    # Resolve slug collisions deterministically (sorted by name).
+    slug_seen = {}
+    final = []
+    for name, primary_dept, code, base_slug, inst_rows in sorted(entries, key=lambda e: e[0]):
+        n = slug_seen.get(base_slug, 0)
+        slug = base_slug if n == 0 else f"{base_slug}-{n + 1}"
+        slug_seen[base_slug] = n + 1
+        final.append((name, primary_dept, code, slug, inst_rows))
+
+    name_to_slug = {name: slug for name, _, _, slug, _ in final}
+    return final, name_to_slug
+
+
+def build_instructors(db, out_dir, instructor_data):
+    print("Building instructor data...")
+    inst_dir = out_dir / "data" / "instructors"
+
+    index = []
+    for name, primary_dept, code, slug, inst_rows in instructor_data:
+        terms = sorted(set(r['term'] for r in inst_rows))
+
+        courses = {}
+        for r in inst_rows:
+            cid = r['course_id']
+            c = courses.setdefault(cid, {"title": r['title'], "terms": {}})
+            c["terms"][r['term']] = c["terms"].get(r['term'], 0) + 1
+
+        rows_by_term = {}
+        for r in inst_rows:
+            rows_by_term.setdefault(r['term'], []).append(r)
+
+        schedule = {}
+        for term, term_rows in rows_by_term.items():
+            groups = {}
+            for r in term_rows:
+                key = (r['title'], r['section_id'], r['days'], r['start_time'], r['end_time'])
+                groups[key] = r  # dedupe cross-listed sections sharing the same meeting
+            meetings = []
+            for (title, section_id, days_str, start_time, end_time), r in groups.items():
+                days = parse_days(days_str)
+                start_min = parse_time(start_time)
+                end_min = parse_time(end_time)
+                meetings.append({
+                    "courseId": r['course_id'],
+                    "title": title,
+                    "sectionId": section_id,
+                    "days": days_str,
+                    "dayIndexes": [DAY_INDEX[d] for d in days if d in DAY_INDEX],
+                    "startTime": start_time,
+                    "endTime": end_time,
+                    "slot": time_to_slot(start_min) if start_min is not None else None,
+                    "slotEnd": time_to_slot(end_min) if end_min is not None else None,
+                    "building": r['building'],
+                    "room": r['room'],
+                })
+            schedule[term] = meetings
+
+        write_json(inst_dir / f"{slug}.json", {
+            "slug": slug,
+            "name": name,
+            "dept": code,
+            "deptName": primary_dept,
+            "firstTerm": terms[0] if terms else None,
+            "lastTerm": terms[-1] if terms else None,
+            "courses": courses,
+            "schedule": schedule,
+        })
+
+        index.append({
+            "slug": slug,
+            "name": name,
+            "dept": code,
+            "sections": len(inst_rows),
+            "firstTerm": terms[0] if terms else None,
+            "lastTerm": terms[-1] if terms else None,
+        })
+
+    write_json(inst_dir / "_index.json", index)
+    print(f"  {len(index)} instructors")
 
 
 def build_similarity(db, out_dir):
@@ -1035,7 +1164,9 @@ def main():
     meta = build_meta(db, out_dir)
     build_overview(db, out_dir, meta)
     build_heatmap(db, out_dir, meta['terms'])
-    build_departments(db, out_dir)
+    instructor_data, name_to_slug = compute_instructor_data(db)
+    build_departments(db, out_dir, name_to_slug)
+    build_instructors(db, out_dir, instructor_data)
     build_similarity(db, out_dir)
     build_turnover(db, out_dir, meta)
     build_new_courses(db, out_dir, meta)

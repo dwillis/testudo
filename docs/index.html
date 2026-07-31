@@ -587,6 +587,72 @@
     margin-bottom: 0.25rem;
   }
 
+  /* Instructor schedule grid */
+  .sched-wrap { overflow-x: auto; margin-bottom: 1rem; }
+  .sched-grid {
+    display: grid;
+    grid-template-columns: 60px repeat(7, 1fr);
+    grid-auto-rows: 20px;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    min-width: 700px;
+  }
+  .sched-header {
+    background: var(--light);
+    padding: 0.3rem 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--gray);
+  }
+  .sched-time {
+    background: var(--white);
+    padding: 0 0.3rem;
+    font-size: 0.6rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+    color: var(--gray-light);
+    display: flex;
+    align-items: center;
+  }
+  .sched-cell { background: var(--white); }
+  .sched-block {
+    background: var(--red);
+    color: var(--white);
+    border-radius: 4px;
+    font-size: 0.65rem;
+    line-height: 1.25;
+    padding: 0.15rem 0.35rem;
+    overflow: hidden;
+    cursor: pointer;
+    margin: 1px;
+  }
+  .sched-block:hover { filter: brightness(1.15); }
+  .sched-block .sb-course { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sched-block .sb-meta {
+    opacity: 0.85;
+    font-size: 0.6rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sched-untimed { list-style: none; font-size: 0.8rem; margin-top: 0.5rem; }
+  .sched-untimed li {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--light);
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+  .sched-untimed li:hover { background: var(--red-light); }
+
+  .instructor-header h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .instructor-header .sub { font-size: 0.8rem; color: var(--gray); }
+  .instructor-list a { color: var(--red); text-decoration: none; }
+  .instructor-list a:hover { text-decoration: underline; }
+
   .loading { text-align: center; padding: 2rem; color: var(--gray); font-size: 0.85rem; }
 
   @media (max-width: 768px) {
@@ -605,6 +671,7 @@
 <nav>
   <a href="#/" data-view="overview">Overview</a>
   <a href="#/dept" data-view="dept">Departments</a>
+  <a href="#/instructors" data-view="instructors">Instructors</a>
   <a href="#/turnover" data-view="turnover">Turnover</a>
   <a href="#/new" data-view="new">New Courses</a>
   <a href="#/longstanding" data-view="longstanding">Changes</a>
@@ -631,6 +698,12 @@
 
   <!-- Department Detail View -->
   <div id="view-dept-detail" class="view"></div>
+
+  <!-- Instructor List View -->
+  <div id="view-instructors" class="view"></div>
+
+  <!-- Instructor Detail View -->
+  <div id="view-instructor-detail" class="view"></div>
 
   <!-- Similarity View -->
   <div id="view-similar" class="view"></div>
@@ -734,6 +807,8 @@ function route() {
     a.classList.toggle('active', v === view ||
       (view === '' && v === 'overview') ||
       (view === 'dept' && v === 'dept') ||
+      (view === 'instructors' && v === 'instructors') ||
+      (view === 'instructor' && v === 'instructors') ||
       (view === 'similar' && v === 'overview') ||
       (view === 'new' && v === 'new') ||
       (view === 'turnover' && v === 'turnover') ||
@@ -748,6 +823,8 @@ function route() {
   else if (view === 'heatmap') viewId = 'view-heatmap';
   else if (view === 'dept' && param) viewId = 'view-dept-detail';
   else if (view === 'dept') viewId = 'view-dept';
+  else if (view === 'instructor' && param) viewId = 'view-instructor-detail';
+  else if (view === 'instructors') viewId = 'view-instructors';
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
@@ -765,6 +842,9 @@ function route() {
   else if (view === 'heatmap' && currentView !== 'heatmap') renderHeatmap();
   else if (view === 'dept' && !param && currentView !== 'dept-list') renderDeptList();
   else if (view === 'dept' && param) renderDeptDetail(param);
+  else if (view === 'instructors' && currentView !== 'instructors') renderInstructorList();
+  else if (view === 'instructor' && !param) { location.hash = '#/instructors'; return; }
+  else if (view === 'instructor' && param) renderInstructorDetail(param);
   else if (view === 'similar' && !param) { location.hash = '#/'; return; }
   else if (view === 'similar' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
@@ -1325,13 +1405,259 @@ async function renderDeptDetail(code) {
   if (data.instructors.length) {
     html += '<h3>Top Instructors</h3><ul class="instructor-list">';
     data.instructors.forEach(inst => {
-      html += `<li><span>${escHtml(inst.name)}</span><span class="cnt">${inst.count}</span></li>`;
+      const name = inst.slug
+        ? `<a href="#/instructor/${escHtml(inst.slug)}">${escHtml(inst.name)}</a>`
+        : escHtml(inst.name);
+      html += `<li><span>${name}</span><span class="cnt">${inst.count}</span></li>`;
     });
     html += '</ul>';
   }
   html += '</div></div>';
 
   el.innerHTML = html;
+}
+
+// ── Instructor List ──
+
+let instructorIndex = null;
+let instructorSort = { col: 'sections', dir: -1 };
+
+async function renderInstructorList() {
+  const el = $('#view-instructors');
+  el.innerHTML = `<div class="filters"><input type="text" class="instructor-search" placeholder="Filter instructors..." value=""></div><div id="instructor-table-wrap"></div>`;
+
+  instructorIndex = await fetchJSON('instructors/_index.json');
+
+  el.querySelector('.instructor-search').addEventListener('input', drawInstructorList);
+  drawInstructorList();
+}
+
+function drawInstructorList() {
+  const el = $('#view-instructors');
+  const searchInput = el.querySelector('.instructor-search');
+  const searchVal = searchInput ? searchInput.value.toLowerCase() : '';
+
+  const sorted = [...instructorIndex].sort((a, b) => {
+    const av = a[instructorSort.col], bv = b[instructorSort.col];
+    if (typeof av === 'number') return (av - bv) * instructorSort.dir;
+    return String(av).localeCompare(String(bv)) * instructorSort.dir;
+  });
+
+  const filtered = searchVal
+    ? sorted.filter(i => i.name.toLowerCase().includes(searchVal) || i.dept.toLowerCase().includes(searchVal))
+    : sorted;
+
+  const cols = [
+    { key: 'name', label: 'Name' },
+    { key: 'dept', label: 'Dept' },
+    { key: 'sections', label: 'Sections', cls: 'num' },
+    { key: 'lastTerm', label: 'Last Taught', cls: 'num' },
+  ];
+
+  let html = `<div class="stat-row"><span>${filtered.length.toLocaleString()} instructors</span></div>`;
+  html += '<table><thead><tr>';
+  cols.forEach(c => {
+    const arrow = instructorSort.col === c.key ? (instructorSort.dir === 1 ? ' ↑' : ' ↓') : '';
+    html += `<th data-col="${c.key}" class="${c.cls || ''}">${c.label}${arrow}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  filtered.slice(0, 500).forEach(i => {
+    html += `<tr class="clickable" data-slug="${escHtml(i.slug)}">`;
+    html += `<td>${escHtml(i.name)}</td>`;
+    html += `<td style="font-family:monospace;color:var(--gray)">${escHtml(i.dept)}</td>`;
+    html += `<td class="num">${i.sections}</td>`;
+    html += `<td class="num">${formatTermShort(i.lastTerm)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  if (filtered.length > 500) {
+    html += `<div style="font-size:0.75rem;color:var(--gray);margin-top:0.5rem">Showing first 500 of ${filtered.length.toLocaleString()} matches — refine your search to see more.</div>`;
+  }
+
+  const tableWrap = el.querySelector('#instructor-table-wrap');
+  tableWrap.innerHTML = html;
+
+  tableWrap.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (instructorSort.col === col) instructorSort.dir *= -1;
+      else { instructorSort.col = col; instructorSort.dir = col === 'name' || col === 'dept' ? 1 : -1; }
+      drawInstructorList();
+    });
+  });
+
+  tableWrap.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => location.hash = '#/instructor/' + tr.dataset.slug);
+  });
+}
+
+// ── Instructor Detail ──
+
+function currentSocTerm() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  return month <= 7 ? `${year}01` : `${year}08`;
+}
+
+let instructorData = null;
+let instructorTerm = null;
+
+async function renderInstructorDetail(slug) {
+  const el = $('#view-instructor-detail');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  let data;
+  try {
+    data = await fetchJSON('instructors/' + slug + '.json');
+  } catch {
+    el.innerHTML = '<div class="loading">Instructor not found.</div>';
+    return;
+  }
+  instructorData = data;
+
+  const terms = Object.keys(data.schedule).sort();
+  const wanted = currentSocTerm();
+  instructorTerm = terms.includes(wanted) ? wanted : (terms[terms.length - 1] || null);
+
+  let html = `<a href="#/instructors" class="back-link">&larr; All instructors</a>`;
+  html += `<div class="instructor-header"><h2>${escHtml(data.name)}</h2>`;
+  html += `<div class="sub"><a href="#/dept/${escHtml(data.dept)}" style="color:var(--red);text-decoration:none">${escHtml(data.deptName)}</a>`;
+  html += ` &middot; ${formatTerm(data.firstTerm)} &ndash; ${formatTerm(data.lastTerm)}</div></div>`;
+
+  html += '<div class="filters" id="inst-term-filter"></div>';
+  html += '<div id="inst-schedule"></div>';
+
+  html += '<div class="section-label" style="margin-top:1.25rem">Course history</div>';
+  const courses = Object.entries(data.courses).sort((a, b) => a[0].localeCompare(b[0]));
+  html += '<table><thead><tr><th>Course</th><th>Title</th><th>Terms</th><th>Last taught</th></tr></thead><tbody>';
+  courses.forEach(([cid, c]) => {
+    const termsTaught = Object.keys(c.terms).sort();
+    const lastTerm = termsTaught[termsTaught.length - 1];
+    html += '<tr>';
+    html += `<td><a href="#/similar/${escHtml(cid)}" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none">${escHtml(cid)}</a></td>`;
+    html += `<td>${escHtml(c.title || '')}</td>`;
+    html += `<td class="num">${termsTaught.length}</td>`;
+    html += `<td class="num">${formatTermShort(lastTerm)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  el.innerHTML = html;
+
+  const filterEl = $('#inst-term-filter');
+  if (terms.length) {
+    filterEl.innerHTML = '<label>Term</label><select id="inst-term-select"></select>';
+    const sel = $('#inst-term-select');
+    terms.slice().reverse().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = formatTerm(t);
+      if (t === instructorTerm) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => { instructorTerm = sel.value; drawInstructorSchedule(); });
+  } else {
+    filterEl.innerHTML = '';
+  }
+
+  drawInstructorSchedule();
+}
+
+function drawInstructorSchedule() {
+  const el = $('#inst-schedule');
+  const meetings = (instructorTerm && instructorData.schedule[instructorTerm]) || [];
+
+  if (!instructorTerm) {
+    el.innerHTML = '<div class="loading">No scheduled sections on record.</div>';
+    return;
+  }
+
+  const timed = meetings.filter(m => m.slot !== null && m.dayIndexes.length);
+  const untimed = meetings.filter(m => m.slot === null || !m.dayIndexes.length);
+
+  let html = '<div class="sched-wrap"><div class="sched-grid" id="sched-grid-inner"></div></div>';
+  if (untimed.length) {
+    html += '<div class="section-label" style="margin-top:0.75rem">Online / no scheduled meeting time</div>';
+    html += '<ul class="sched-untimed">';
+    untimed.forEach(m => {
+      html += `<li data-course="${escHtml(m.courseId)}"><span><strong>${escHtml(m.courseId)}</strong> ${escHtml(m.title || '')}</span><span style="color:var(--gray)">${escHtml(m.sectionId || '')}</span></li>`;
+    });
+    html += '</ul>';
+  }
+  el.innerHTML = html;
+
+  const grid = $('#sched-grid-inner');
+  grid.innerHTML = '';
+
+  const corner = document.createElement('div');
+  corner.className = 'sched-header';
+  grid.appendChild(corner);
+  DAY_LABELS.forEach(d => {
+    const h = document.createElement('div');
+    h.className = 'sched-header';
+    h.textContent = d;
+    grid.appendChild(h);
+  });
+
+  for (let slot = 0; slot < 30; slot++) {
+    const timeEl = document.createElement('div');
+    timeEl.className = 'sched-time';
+    timeEl.style.gridRow = String(slot + 2);
+    timeEl.style.gridColumn = '1';
+    timeEl.textContent = slotLabel(slot);
+    grid.appendChild(timeEl);
+
+    for (let day = 0; day < 7; day++) {
+      const cell = document.createElement('div');
+      cell.className = 'sched-cell';
+      cell.style.gridRow = String(slot + 2);
+      cell.style.gridColumn = String(day + 2);
+      grid.appendChild(cell);
+    }
+  }
+
+  // Explode multi-day meetings into per-day entries, then assign each day's
+  // meetings to side-by-side lanes so overlapping sections (e.g. many
+  // discussion sections under one instructor of record) stay visible
+  // instead of stacking on top of each other.
+  const byDay = Array.from({ length: 7 }, () => []);
+  timed.forEach(m => {
+    const span = Math.max(1, (m.slotEnd !== null ? m.slotEnd - m.slot : 1));
+    m.dayIndexes.forEach(day => byDay[day].push({ ...m, span }));
+  });
+
+  byDay.forEach((dayMeetings, day) => {
+    if (!dayMeetings.length) return;
+    dayMeetings.sort((a, b) => a.slot - b.slot);
+    const laneEnds = [];
+    dayMeetings.forEach(m => {
+      let lane = laneEnds.findIndex(end => end <= m.slot);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = m.slot + m.span;
+      m._lane = lane;
+    });
+    const totalLanes = laneEnds.length;
+
+    dayMeetings.forEach(m => {
+      const block = document.createElement('div');
+      block.className = 'sched-block';
+      block.style.gridRow = `${m.slot + 2} / span ${m.span}`;
+      block.style.gridColumn = String(day + 2);
+      if (totalLanes > 1) {
+        block.style.marginLeft = `${(100 * m._lane / totalLanes)}%`;
+        block.style.width = `calc(${100 / totalLanes}% - 2px)`;
+      }
+      block.innerHTML = `<div class="sb-course">${escHtml(m.courseId)}</div><div class="sb-meta">${escHtml(m.startTime)}&ndash;${escHtml(m.endTime)}${m.room ? ' &middot; ' + escHtml(m.building + ' ' + m.room) : ''}</div>`;
+      block.title = `${m.courseId} ${m.title || ''} (${m.sectionId})`;
+      block.addEventListener('click', () => location.hash = '#/similar/' + m.courseId);
+      grid.appendChild(block);
+    });
+  });
+
+  el.querySelectorAll('.sched-untimed li').forEach(li => {
+    li.addEventListener('click', () => location.hash = '#/similar/' + li.dataset.course);
+  });
 }
 
 // ── Similarity ──
