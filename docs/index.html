@@ -1495,10 +1495,13 @@ function drawInstructorList() {
 // ── Instructor Detail ──
 
 function currentSocTerm() {
+  // Spring semester runs Jan–May; once it's over, Fall is the "current" one
+  // to default to (registration and interest shift to Fall well before it
+  // starts in late August).
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
-  return month <= 7 ? `${year}01` : `${year}08`;
+  return month <= 5 ? `${year}01` : `${year}08`;
 }
 
 let instructorData = null;
