@@ -35,6 +35,13 @@ def get_db(path):
     return conn
 
 
+def has_column(db, table, column):
+    """Return True if a column exists — lets the build run against older DBs
+    created before the no_longer_offered column was added."""
+    rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r['name'] == column for r in rows)
+
+
 def parse_time(t):
     """Parse '11:00am' -> minutes since midnight."""
     if not t:
@@ -242,8 +249,12 @@ def dept_to_code(db, dept_name):
 
 
 def build_single_department(db, dept_dir, dept_name, code, name_to_slug):
-    course_rows = db.execute("""
-        SELECT course_id, title, level, credits, term, section_count
+    if has_column(db, "courses", "no_longer_offered"):
+        extra_cols = ", no_longer_offered, removed_detected"
+    else:
+        extra_cols = ", 0 AS no_longer_offered, NULL AS removed_detected"
+    course_rows = db.execute(f"""
+        SELECT course_id, title, level, credits, term, section_count{extra_cols}
         FROM courses WHERE department = ?
         ORDER BY course_id, term
     """, (dept_name,)).fetchall()
@@ -259,7 +270,13 @@ def build_single_department(db, dept_dir, dept_name, code, name_to_slug):
                 "terms": {}
             }
         sc = r['section_count']
-        if sc and sc > 0:
+        if r['no_longer_offered']:
+            # Stored for this term but dropped from Testudo. Its phantom sections
+            # must not count as an active offering — flag it instead.
+            courses[cid]["noLongerOffered"] = True
+            courses[cid]["removedTerm"] = r['term']
+            courses[cid]["removedDetected"] = r['removed_detected']
+        elif sc and sc > 0:
             courses[cid]["terms"][r['term']] = sc
 
     # Compute lifecycle: first/last term each course ran (had sections)
@@ -751,6 +768,42 @@ def build_new_courses(db, out_dir, meta):
     print(f"  {total} new courses across {len(major_terms)} fall/spring terms")
 
 
+def build_no_longer_offered(db, out_dir, meta):
+    """Build no_longer_offered.json — courses the scraper flagged as dropped from
+    Testudo mid-term, grouped by the term they were removed from."""
+    print("Building no-longer-offered data...")
+
+    if not has_column(db, "courses", "no_longer_offered"):
+        # DB predates the flag — emit an empty payload so the view degrades gracefully.
+        write_json(out_dir / "data" / "no_longer_offered.json", {"terms": [], "byTerm": {}})
+        print("  no_longer_offered column absent; wrote empty payload")
+        return
+
+    by_term = {}
+    for row in db.execute("""
+        SELECT course_id, title, department, level, credits, term, removed_detected
+        FROM courses WHERE no_longer_offered = 1
+        ORDER BY course_id
+    """).fetchall():
+        by_term.setdefault(row['term'], []).append({
+            "course_id": row['course_id'],
+            "title": row['title'],
+            "department": row['department'],
+            "level": row['level'],
+            "credits": row['credits'],
+            "removed_detected": row['removed_detected'],
+        })
+
+    terms = sorted(by_term.keys())
+    result = {
+        "terms": terms,
+        "byTerm": by_term,
+    }
+    write_json(out_dir / "data" / "no_longer_offered.json", result)
+    total = sum(len(v) for v in by_term.values())
+    print(f"  {total} no-longer-offered courses across {len(terms)} term(s)")
+
+
 def build_longstanding(db, out_dir, meta):
     """Build longstanding.json with courses that exist in both an early and
     late term, including description diffs.  Two comparison pairs:
@@ -1170,6 +1223,7 @@ def main():
     build_similarity(db, out_dir)
     build_turnover(db, out_dir, meta)
     build_new_courses(db, out_dir, meta)
+    build_no_longer_offered(db, out_dir, meta)
     build_seasonal(db, out_dir, meta)
     build_special_topics(db, out_dir, meta)
     build_longstanding(db, out_dir, meta)

@@ -674,6 +674,7 @@
   <a href="#/instructors" data-view="instructors">Instructors</a>
   <a href="#/turnover" data-view="turnover">Turnover</a>
   <a href="#/new" data-view="new">New Courses</a>
+  <a href="#/dropped" data-view="dropped">No Longer Offered</a>
   <a href="#/longstanding" data-view="longstanding">Changes</a>
   <a href="#/topics" data-view="topics">Special Topics</a>
   <a href="#/seasonal" data-view="seasonal">Summer/Winter</a>
@@ -713,6 +714,9 @@
 
   <!-- New Courses View -->
   <div id="view-new" class="view"></div>
+
+  <!-- No Longer Offered View -->
+  <div id="view-dropped" class="view"></div>
 
   <!-- Longstanding View -->
   <div id="view-longstanding" class="view"></div>
@@ -811,6 +815,7 @@ function route() {
       (view === 'instructor' && v === 'instructors') ||
       (view === 'similar' && v === 'overview') ||
       (view === 'new' && v === 'new') ||
+      (view === 'dropped' && v === 'dropped') ||
       (view === 'turnover' && v === 'turnover') ||
       (view === 'longstanding' && v === 'longstanding') ||
       (view === 'topics' && v === 'topics') ||
@@ -828,6 +833,7 @@ function route() {
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
+  else if (view === 'dropped') viewId = 'view-dropped';
   else if (view === 'longstanding') viewId = 'view-longstanding';
   else if (view === 'topics') viewId = 'view-topics';
   else if (view === 'seasonal') viewId = 'view-seasonal';
@@ -848,6 +854,7 @@ function route() {
   else if (view === 'similar' && !param) { location.hash = '#/'; return; }
   else if (view === 'similar' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
+  else if (view === 'dropped' && currentView !== 'dropped') renderDropped();
   else if (view === 'longstanding' && currentView !== 'longstanding') renderLongstanding();
   else if (view === 'topics' && currentView !== 'topics') renderTopics();
   else if (view === 'seasonal' && currentView !== 'seasonal') renderSeasonal();
@@ -1352,6 +1359,28 @@ async function renderDeptDetail(code) {
     html += '</tbody></table>';
   }
 
+  // ── No longer offered (flagged: pulled from Testudo mid-term) ──
+  const droppedNow = courses
+    .filter(([, c]) => c.noLongerOffered)
+    .map(([cid, c]) => ({ id: cid, ...c }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (droppedNow.length) {
+    html += `<div class="section-label" style="margin-top:1rem">No longer offered <span style="font-weight:400;text-transform:none">&mdash; ${droppedNow.length} course${droppedNow.length === 1 ? '' : 's'} pulled from Testudo after being listed</span></div>`;
+    html += '<table><thead><tr><th>Course</th><th>Title</th><th>Removed from</th><th>Detected</th><th>Level</th></tr></thead><tbody>';
+    droppedNow.forEach(c => {
+      const detected = c.removedDetected ? String(c.removedDetected).slice(0, 10) : '';
+      html += `<tr style="opacity:0.7">`;
+      html += `<td>${courseLink(c.id, c.removedTerm)} <span style="display:inline-block;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#fff;background:var(--red);border-radius:3px;padding:1px 5px;vertical-align:middle">dropped</span></td>`;
+      html += `<td>${escHtml(c.title || '')}</td>`;
+      html += `<td class="num">${formatTermShort(c.removedTerm)}</td>`;
+      html += `<td class="num" style="color:var(--gray)">${escHtml(detected)}</td>`;
+      html += `<td>${escHtml(c.level || '')}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
   // ── Discontinued courses (not offered recently) ──
   if (staleCourses.length) {
     const staleList = staleCourses
@@ -1837,6 +1866,65 @@ function drawNewCourses(term) {
   html += '</tbody></table>';
 
   $('#nc-table').innerHTML = html;
+}
+
+// ── No Longer Offered ──
+
+let droppedData = null;
+
+async function renderDropped() {
+  const el = $('#view-dropped');
+  el.innerHTML = '<div class="loading">Loading...</div>';
+
+  droppedData = await fetchJSON('no_longer_offered.json');
+  const terms = droppedData.terms || [];
+
+  if (!terms.length) {
+    el.innerHTML = '<h2>No Longer Offered</h2><p style="color:var(--gray);max-width:640px">Courses the scraper found in a term and later detected had been pulled from Testudo will appear here. None are currently flagged.</p>';
+    return;
+  }
+
+  const defaultTerm = terms[terms.length - 1] || '';
+
+  let html = '<h2>No Longer Offered</h2>';
+  html += '<p style="color:var(--gray);max-width:640px;font-size:0.9rem">Courses that were listed on Testudo for a term and later removed &mdash; detected when a re-scrape of the same term no longer returned them. Their stored details are kept for reference.</p>';
+  html += '<div class="filters">';
+  html += '<label>Term</label><select id="nlo-term">';
+  terms.slice().reverse().forEach(t => {
+    html += `<option value="${t}" ${t === defaultTerm ? 'selected' : ''}>${formatTerm(t)}</option>`;
+  });
+  html += '</select>';
+  html += '</div>';
+  html += '<div id="nlo-summary"></div>';
+  html += '<div id="nlo-table"></div>';
+
+  el.innerHTML = html;
+  $('#nlo-term').addEventListener('change', () => drawDropped($('#nlo-term').value));
+  drawDropped(defaultTerm);
+}
+
+function drawDropped(term) {
+  const courses = (droppedData.byTerm && droppedData.byTerm[term]) || [];
+
+  $('#nlo-summary').innerHTML = `<div class="stat-row"><span><strong>${courses.length}</strong> course${courses.length === 1 ? '' : 's'} removed from ${formatTerm(term)} after first appearing</span></div>`;
+
+  let html = '<table><thead><tr>';
+  html += '<th>Course</th><th>Title</th><th>Department</th><th>Level</th><th>Detected</th>';
+  html += '</tr></thead><tbody>';
+
+  courses.slice().sort((a, b) => a.course_id.localeCompare(b.course_id)).forEach(c => {
+    const detected = c.removed_detected ? String(c.removed_detected).slice(0, 10) : '';
+    html += '<tr>';
+    html += `<td>${courseLink(c.course_id, term)}</td>`;
+    html += `<td>${escHtml(c.title || '')}</td>`;
+    html += `<td>${escHtml(c.department || '')}</td>`;
+    html += `<td>${escHtml(c.level || '')}</td>`;
+    html += `<td class="num" style="color:var(--gray)">${escHtml(detected)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  $('#nlo-table').innerHTML = html;
 }
 
 // ── Longstanding ──

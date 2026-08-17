@@ -61,6 +61,7 @@ class ScrapingStats:
     successful_courses: int = 0
     failed_courses: int = 0
     departments_processed: int = 0
+    stale_flagged: int = 0
     
     @property
     def success_rate(self) -> float:
@@ -81,3 +82,4 @@ class ScrapingStats:
         self.successful_courses += other.successful_courses
         self.failed_courses += other.failed_courses
         self.departments_processed += other.departments_processed
+        self.stale_flagged += other.stale_flagged

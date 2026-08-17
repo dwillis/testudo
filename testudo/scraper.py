@@ -3,8 +3,9 @@
 import os
 import json
 import time
+import datetime
 import logging
-from typing import Optional, List
+from typing import Optional, List, Set
 from pathlib import Path
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -116,13 +117,22 @@ class TestudoScraper:
         """Worker: scrape one department with its own parser and local stats."""
         local_stats = ScrapingStats(start_time=time.time())
         parser = TestudoParser(self.config, rate_limiter=limiter)
+        seen_ids: Set[str] = set()
+        prefixes: Set[str] = set()
         try:
             for course in parser.get_courses(dept, term):
                 local_stats.total_courses += 1
-                if course and self._save_course(course, term):
-                    local_stats.successful_courses += 1
+                if course:
+                    seen_ids.add(course.id)
+                    prefixes.add(course.id[:4])
+                    if self._save_course(course, term):
+                        local_stats.successful_courses += 1
+                    else:
+                        local_stats.failed_courses += 1
                 else:
                     local_stats.failed_courses += 1
+            # Reached only when the department scrape completed without error.
+            local_stats.stale_flagged += self._flag_stale_courses(term, seen_ids, prefixes)
             local_stats.departments_processed += 1
             return (dept.id, local_stats, None)
         except Exception as e:
@@ -157,12 +167,20 @@ class TestudoScraper:
         
         dept_courses = 0
         dept_failed = 0
-        
+        seen_ids: Set[str] = set()
+        prefixes: Set[str] = set()
+        completed = False
+
         try:
             for course in self.parser.get_courses(dept, term):
                 self.stats.total_courses += 1
-                
+
                 if course:
+                    # Track every course Testudo returned, independent of whether
+                    # the write succeeded — a save failure is transient IO, not a
+                    # signal that the course was dropped.
+                    seen_ids.add(course.id)
+                    prefixes.add(course.id[:4])
                     success = self._save_course(course, term)
                     if success:
                         self.stats.successful_courses += 1
@@ -173,10 +191,16 @@ class TestudoScraper:
                 else:
                     self.stats.failed_courses += 1
                     dept_failed += 1
-        
+            completed = True
+
         except Exception as e:
             logger.error(f"Error processing department {dept.id}: {e}")
-        
+
+        # Only reconcile when the department scrape ran to completion — a partial
+        # or failed fetch must not flag still-offered courses as removed.
+        if completed:
+            self.stats.stale_flagged += self._flag_stale_courses(term, seen_ids, prefixes)
+
         dept_time = time.time() - dept_start
         logger.info(f"Completed {dept.id}: {dept_courses} courses, {dept_failed} failed in {dept_time:.1f}s")
         self.stats.departments_processed += 1
@@ -196,7 +220,66 @@ class TestudoScraper:
         except Exception as e:
             logger.error(f"Error writing course {course.id}: {e}")
             return False
-    
+
+    def _flag_stale_courses(self, term: str, seen_ids: Set[str], prefixes: Set[str]) -> int:
+        """Flag stored courses a department no longer offers this term.
+
+        Diffs the course ids Testudo returned against the JSON files already on
+        disk for the prefixes this department touched, and flags any leftover as
+        no-longer-offered. Files are flagged in place, never deleted, so a dropped
+        course keeps its history and can be surfaced on the site. A course that
+        reappears is overwritten by ``_save_course`` with fresh JSON, which drops
+        the flag automatically.
+
+        Returns the number of files newly flagged.
+        """
+        # Guard: an empty result means the department returned nothing (a failed
+        # or empty fetch). Flagging everything then would be a mass false positive.
+        if not seen_ids:
+            return 0
+
+        flagged = 0
+        for prefix in prefixes:
+            dir_path = Path(self.config.data_dir) / term / prefix
+            if not dir_path.is_dir():
+                continue
+            for json_file in dir_path.glob('*.json'):
+                if json_file.stem in seen_ids:
+                    continue
+                if self._mark_no_longer_offered(json_file):
+                    flagged += 1
+        if flagged:
+            logger.info(f"Flagged {flagged} no-longer-offered course(s) for term {term}")
+        return flagged
+
+    def _mark_no_longer_offered(self, json_file: Path) -> bool:
+        """Add the no-longer-offered flag to a stored course file, in place.
+
+        Preserves the existing content and only stamps the flag once, keeping the
+        original detection timestamp on subsequent scrapes. Returns True if the
+        file was newly flagged.
+        """
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(f"Could not read {json_file} for staleness check: {e}")
+            return False
+
+        if data.get('no_longer_offered'):
+            return False  # already flagged; keep the original detection time
+
+        data['no_longer_offered'] = True
+        data['removed_detected'] = datetime.datetime.utcnow().isoformat() + 'Z'
+        try:
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Flagged no-longer-offered course: {json_file.name}")
+            return True
+        except Exception as e:
+            logger.error(f"Could not flag {json_file}: {e}")
+            return False
+
     def print_stats(self) -> None:
         """Print final statistics."""
         logger.info(f"Scraping completed in {self.stats.elapsed_time:.1f}s")
@@ -204,4 +287,5 @@ class TestudoScraper:
         logger.info(f"Total courses processed: {self.stats.total_courses}")
         logger.info(f"Successful: {self.stats.successful_courses}")
         logger.info(f"Failed: {self.stats.failed_courses}")
+        logger.info(f"No longer offered (flagged): {self.stats.stale_flagged}")
         logger.info(f"Success rate: {self.stats.success_rate:.1f}%")

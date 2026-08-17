@@ -35,7 +35,11 @@ def flatten_course(course_data: Dict[str, Any]) -> Dict[str, Any]:
         'most_recent_syllabus': course_data.get('most_recent_syllabus'),
         'updated': course_data.get('updated'),
         'grading_methods': ', '.join(course_data.get('grading-method', [])) if course_data.get('grading-method') else None,
-        'section_count': len(course_data.get('sections', []))
+        'section_count': len(course_data.get('sections', [])),
+        # Set by the scraper when Testudo stopped offering the course mid-term.
+        # The stale JSON keeps its sections, so carry the flag through explicitly.
+        'no_longer_offered': 1 if course_data.get('no_longer_offered') else 0,
+        'removed_detected': course_data.get('removed_detected'),
     }
     
     return flattened
@@ -171,6 +175,8 @@ def process_json_files(
             c.syllabus_count,
             c.most_recent_syllabus,
             c.grading_methods,
+            c.no_longer_offered,
+            c.removed_detected,
             s.section_id,
             s.instructors,
             s.seats,
