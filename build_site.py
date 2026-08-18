@@ -595,6 +595,104 @@ def build_similarity(db, out_dir):
     print(f"  Wrote {len(all_neighbors)} neighbor files + index")
 
 
+def build_course_pages(db, out_dir, meta, name_to_slug):
+    """One JSON file per course with its full term-by-term history: when it was
+    offered, class sizes, instructors, and any no-longer-offered flag. These back
+    the per-course pages that are the primary in-site links for a course."""
+    print("Building course pages...")
+    courses_dir = out_dir / "data" / "courses"
+    courses_dir.mkdir(parents=True, exist_ok=True)
+
+    has_flag = has_column(db, "courses", "no_longer_offered")
+    flag_sel = (", no_longer_offered, removed_detected" if has_flag
+                else ", 0 AS no_longer_offered, NULL AS removed_detected")
+
+    # Per-(course, term) section aggregates: class size + instructors.
+    sec = {}
+    for r in db.execute("""
+        SELECT course_id, term,
+               COUNT(*) AS sections,
+               SUM(COALESCE(seats, 0)) AS seats,
+               SUM(COALESCE(open_seats, 0)) AS open_seats,
+               SUM(COALESCE(waitlist, 0)) AS waitlist,
+               GROUP_CONCAT(instructors, '||') AS instructors
+        FROM sections GROUP BY course_id, term
+    """).fetchall():
+        sec[(r['course_id'], r['term'])] = r
+
+    def clean_instructors(raw):
+        out, seen = [], set()
+        if not raw:
+            return out
+        for chunk in raw.split('||'):
+            for name in chunk.split(','):
+                name = name.strip()
+                if not name or name.lower() in ('instructor: tba', 'tba'):
+                    continue
+                if name not in seen:
+                    seen.add(name)
+                    out.append(name)
+        return out
+
+    rows = db.execute(f"""
+        SELECT course_id, title, department, level, credits, description,
+               grading_methods, term, section_count{flag_sel}
+        FROM courses ORDER BY course_id, term
+    """).fetchall()
+
+    grouped = {}
+    for r in rows:
+        grouped.setdefault(r['course_id'], []).append(r)
+
+    count = 0
+    for cid, crows in grouped.items():
+        crows.sort(key=lambda r: r['term'])
+        latest = crows[-1]
+        terms_out = []
+        inst_terms = {}
+        for r in crows:
+            offered = (r['section_count'] or 0) > 0
+            removed = bool(r['no_longer_offered'])
+            if not offered and not removed:
+                continue  # catalog-only term with no sections — not an offering
+            s = sec.get((cid, r['term']))
+            insts = clean_instructors(s['instructors']) if s else []
+            for name in insts:
+                inst_terms[name] = inst_terms.get(name, 0) + 1
+            terms_out.append({
+                "term": r['term'],
+                "sections": (s['sections'] if s else r['section_count']) or 0,
+                "seats": (s['seats'] if s else 0) or 0,
+                "openSeats": (s['open_seats'] if s else 0) or 0,
+                "waitlist": (s['waitlist'] if s else 0) or 0,
+                "instructors": insts,
+                "removed": removed,
+            })
+
+        no_longer = bool(latest['no_longer_offered'])
+        instructors_ranked = [
+            {"name": n, "terms": c, "slug": name_to_slug.get(n)}
+            for n, c in sorted(inst_terms.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+
+        write_json(courses_dir / f"{cid}.json", {
+            "id": cid,
+            "title": latest['title'],
+            "department": latest['department'],
+            "level": latest['level'],
+            "credits": latest['credits'],
+            "description": latest['description'],
+            "gradingMethods": latest['grading_methods'],
+            "noLongerOffered": no_longer,
+            "removedTerm": latest['term'] if no_longer else None,
+            "removedDetected": latest['removed_detected'],
+            "terms": terms_out,
+            "instructors": instructors_ranked,
+        })
+        count += 1
+    print(f"  Wrote {count} course pages")
+
+
 DEPT_RENAMES = {
     "African American Studies": "African American and Africana Studies",
     "Germanic Studies": "German Studies",
@@ -1258,6 +1356,7 @@ def main():
     build_departments(db, out_dir, name_to_slug)
     build_instructors(db, out_dir, instructor_data)
     build_similarity(db, out_dir)
+    build_course_pages(db, out_dir, meta, name_to_slug)
     build_turnover(db, out_dir, meta)
     build_new_courses(db, out_dir, meta)
     build_no_longer_offered(db, out_dir, meta)

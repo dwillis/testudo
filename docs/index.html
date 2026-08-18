@@ -788,11 +788,15 @@ function testudoUrl(courseId, termId) {
   return `https://app.testudo.umd.edu/soc/search?courseId=${encodeURIComponent(courseId)}&sectionId=&termId=${encodeURIComponent(termId)}&_openSectionsOnly=on&creditCompare=&credits=&courseLevelFilter=ALL&instructor=&_facetoface=on&_blended=on&_online=on&courseStartCompare=&courseStartHour=&courseStartMin=&courseStartAM=&courseEndHour=&courseEndMin=&courseEndAM=&teachingCenter=ALL&_classDay1=on&_classDay2=on&_classDay3=on&_classDay4=on&_classDay5=on`;
 }
 
+// Primary in-site course link: goes to the internal course page. (termId is
+// accepted for call-site compatibility but no longer affects the target.)
 function courseLink(courseId, termId) {
-  if (termId) {
-    return `<a href="${testudoUrl(courseId, termId)}" target="_blank" rel="noopener" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none" title="View on Testudo">${escHtml(courseId)}</a>`;
-  }
-  return `<span style="font-family:monospace;font-weight:600;color:var(--red)">${escHtml(courseId)}</span>`;
+  return `<a href="#/course/${encodeURIComponent(courseId)}" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none" title="Course details">${escHtml(courseId)}</a>`;
+}
+
+// Labeled external link to the UMD Schedule of Classes.
+function testudoLink(courseId, termId, label) {
+  return `<a href="${testudoUrl(courseId, termId)}" target="_blank" rel="noopener" style="color:var(--red);text-decoration:none">${escHtml(label || 'Schedule of Classes')} &#8599;</a>`;
 }
 
 // ── Router ──
@@ -830,6 +834,7 @@ function route() {
   else if (view === 'dept') viewId = 'view-dept';
   else if (view === 'instructor' && param) viewId = 'view-instructor-detail';
   else if (view === 'instructors') viewId = 'view-instructors';
+  else if (view === 'course' && param) viewId = 'view-similar-detail';
   else if (view === 'similar' && param) viewId = 'view-similar-detail';
   else if (view === 'similar') viewId = 'view-overview';
   else if (view === 'new') viewId = 'view-new';
@@ -852,7 +857,9 @@ function route() {
   else if (view === 'instructor' && !param) { location.hash = '#/instructors'; return; }
   else if (view === 'instructor' && param) renderInstructorDetail(param);
   else if (view === 'similar' && !param) { location.hash = '#/'; return; }
-  else if (view === 'similar' && param) renderCourseDetail(param);
+  else if (view === 'similar' && param) { location.hash = '#/course/' + param; return; }
+  else if (view === 'course' && !param) { location.hash = '#/'; return; }
+  else if (view === 'course' && param) renderCourseDetail(param);
   else if (view === 'new' && currentView !== 'new') renderNewCourses();
   else if (view === 'dropped' && currentView !== 'dropped') renderDropped();
   else if (view === 'longstanding' && currentView !== 'longstanding') renderLongstanding();
@@ -963,7 +970,7 @@ async function initOverviewSimilarity() {
 
     dropdown.querySelectorAll('.dropdown-item').forEach(item => {
       item.addEventListener('click', () => {
-        location.hash = '#/similar/' + item.dataset.id;
+        location.hash = '#/course/' +item.dataset.id;
         dropdown.classList.remove('open');
       });
     });
@@ -972,7 +979,7 @@ async function initOverviewSimilarity() {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const first = dropdown.querySelector('.dropdown-item');
-      if (first) { location.hash = '#/similar/' + first.dataset.id; dropdown.classList.remove('open'); }
+      if (first) { location.hash = '#/course/' +first.dataset.id; dropdown.classList.remove('open'); }
     }
     if (e.key === 'Escape') dropdown.classList.remove('open');
   });
@@ -1572,7 +1579,7 @@ async function renderInstructorDetail(slug) {
     const termsTaught = Object.keys(c.terms).sort();
     const lastTerm = termsTaught[termsTaught.length - 1];
     html += '<tr>';
-    html += `<td><a href="#/similar/${escHtml(cid)}" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none">${escHtml(cid)}</a></td>`;
+    html += `<td><a href="#/course/${escHtml(cid)}" style="font-family:monospace;font-weight:600;color:var(--red);text-decoration:none">${escHtml(cid)}</a></td>`;
     html += `<td>${escHtml(c.title || '')}</td>`;
     html += `<td class="num">${termsTaught.length}</td>`;
     html += `<td class="num">${formatTermShort(lastTerm)}</td>`;
@@ -1686,13 +1693,13 @@ function drawInstructorSchedule() {
       }
       block.innerHTML = `<div class="sb-course">${escHtml(m.courseId)}</div><div class="sb-meta">${escHtml(m.startTime)}&ndash;${escHtml(m.endTime)}${m.room ? ' &middot; ' + escHtml(m.building + ' ' + m.room) : ''}</div>`;
       block.title = `${m.courseId} ${m.title || ''} (${m.sectionId})`;
-      block.addEventListener('click', () => location.hash = '#/similar/' + m.courseId);
+      block.addEventListener('click', () => location.hash = '#/course/' +m.courseId);
       grid.appendChild(block);
     });
   });
 
   el.querySelectorAll('.sched-untimed li').forEach(li => {
-    li.addEventListener('click', () => location.hash = '#/similar/' + li.dataset.course);
+    li.addEventListener('click', () => location.hash = '#/course/' +li.dataset.course);
   });
 }
 
@@ -1748,7 +1755,7 @@ async function renderSimilar() {
 
     dropdown.querySelectorAll('.dropdown-item').forEach(item => {
       item.addEventListener('click', () => {
-        location.hash = '#/similar/' + item.dataset.id;
+        location.hash = '#/course/' +item.dataset.id;
         dropdown.classList.remove('open');
       });
     });
@@ -1757,7 +1764,7 @@ async function renderSimilar() {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const first = dropdown.querySelector('.dropdown-item');
-      if (first) { location.hash = '#/similar/' + first.dataset.id; dropdown.classList.remove('open'); }
+      if (first) { location.hash = '#/course/' +first.dataset.id; dropdown.classList.remove('open'); }
     }
     if (e.key === 'Escape') dropdown.classList.remove('open');
   });
@@ -1771,45 +1778,127 @@ async function renderCourseDetail(courseId) {
   const el = $('#view-similar-detail');
   el.innerHTML = '<div class="loading">Loading...</div>';
 
-  if (!simIndex) simIndex = await fetchJSON('similarity/_index.json');
-
-  const meta = simIndex[courseId];
-  if (!meta) { el.innerHTML = '<div class="loading">Course not found.</div>'; return; }
-
-  let neighbors;
+  // Course history is the primary payload for this page.
+  let course;
   try {
-    const data = await fetchJSON('similarity/neighbors/' + courseId + '.json');
-    neighbors = data.neighbors;
+    course = await fetchJSON('courses/' + courseId + '.json');
   } catch {
-    el.innerHTML = '<div class="loading">No similarity data for this course.</div>';
+    el.innerHTML = `<a href="#/" class="back-link">← Back</a><div class="loading">Course not found.</div>`;
     return;
   }
 
-  let html = `<a href="#/" class="back-link">← Back</a>`;
-  html += `<div class="course-detail">
-    <h2><span style="color:var(--red);font-family:monospace">${escHtml(courseId)}</span> ${escHtml(meta.title)}</h2>
-    <div class="cd-meta">${escHtml(meta.dept)} · ${escHtml(meta.level)} · ${escHtml(meta.credits)} credits</div>
-    ${meta.desc ? `<div class="cd-desc">${escHtml(meta.desc)}</div>` : ''}
-  </div>`;
+  // Similar courses are a bonus — the page still renders without them.
+  let neighbors = [];
+  try {
+    neighbors = (await fetchJSON('similarity/neighbors/' + courseId + '.json')).neighbors || [];
+  } catch { /* no similarity data for this course */ }
 
-  html += '<div class="section-label">Most Similar Courses</div>';
-  html += '<div class="neighbors">';
-  neighbors.forEach(n => {
-    html += `<div class="neighbor-card" data-id="${escHtml(n.id)}">
-      <div class="nc-info">
-        <span class="nc-id">${escHtml(n.id)}</span>
-        <span class="nc-title">${escHtml(n.title)}</span><br>
-        <span class="nc-dept">${escHtml(n.dept)}</span>
-      </div>
-      <span class="score">${(n.score * 100).toFixed(1)}%</span>
-    </div>`;
-  });
-  html += '</div>';
+  const allTerms = (await fetchJSON('meta.json')).terms || [];
+  const byTerm = {};
+  course.terms.forEach(t => { byTerm[t.term] = t; });
+  const offered = course.terms.slice().sort((a, b) => a.term.localeCompare(b.term));
+  const latestOffered = offered.length ? offered[offered.length - 1] : null;
+  const maxSeats = Math.max(1, ...course.terms.map(t => t.seats || 0));
+
+  let html = `<a href="#/" class="back-link">← Back</a>`;
+
+  // ── Header ──
+  html += `<div class="course-detail">`;
+  html += `<h2><span style="color:var(--red);font-family:monospace">${escHtml(course.id)}</span> ${escHtml(course.title || '')}`;
+  if (course.noLongerOffered) {
+    html += ` <span style="display:inline-block;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#fff;background:var(--red);border-radius:3px;padding:2px 6px;vertical-align:middle">No longer offered</span>`;
+  }
+  html += `</h2>`;
+  const metaBits = [course.department, course.level, course.credits ? course.credits + ' credits' : null, course.gradingMethods].filter(Boolean);
+  html += `<div class="cd-meta">${escHtml(metaBits.join(' · '))}</div>`;
+  if (course.noLongerOffered) {
+    const det = course.removedDetected ? ' (detected ' + String(course.removedDetected).slice(0, 10) + ')' : '';
+    html += `<div class="cd-meta" style="color:var(--red)">Listed for ${formatTerm(course.removedTerm)}, then removed from the Schedule of Classes${det}.</div>`;
+  }
+  if (course.description) html += `<div class="cd-desc">${escHtml(course.description)}</div>`;
+  // Labeled external link — the actual Schedule of Classes.
+  if (latestOffered) {
+    html += `<div style="margin-top:0.6rem;font-size:0.85rem">${testudoLink(course.id, latestOffered.term, 'View ' + course.id + ' on the UMD Schedule of Classes')}</div>`;
+  }
+  html += `</div>`;
+
+  // ── Term grid ──
+  html += `<div class="section-label" style="margin-top:1rem">Terms offered <span style="font-weight:400;text-transform:none">&mdash; shade = class size (total seats); outlined = listed then removed</span></div>`;
+  if (!offered.length) {
+    html += `<div style="color:var(--gray);font-size:0.85rem">No offerings on record.</div>`;
+  } else {
+    html += `<div style="overflow-x:auto;padding-bottom:4px"><div style="display:flex;gap:3px;min-width:min-content">`;
+    allTerms.forEach(term => {
+      const t = byTerm[term];
+      const label = formatTermShort(term);
+      if (t) {
+        const op = (0.3 + 0.7 * ((t.seats || 0) / maxSeats)).toFixed(2);
+        const bg = t.removed ? 'transparent' : `rgba(226,24,51,${op})`;
+        const border = t.removed ? '2px solid var(--red)' : '1px solid rgba(0,0,0,0.06)';
+        const fg = (!t.removed && op > 0.6) ? '#fff' : 'var(--ink, #1f2937)';
+        const tip = `${formatTerm(term)} · ${t.sections} section${t.sections === 1 ? '' : 's'} · ${t.seats} seats`
+          + (t.instructors.length ? ' · ' + t.instructors.join(', ') : '')
+          + (t.removed ? ' · listed then removed' : '');
+        html += `<a href="${testudoUrl(course.id, term)}" target="_blank" rel="noopener" title="${escHtml(tip)}" style="flex:0 0 auto;width:34px;height:38px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:600;text-align:center;line-height:1.1;border-radius:3px;text-decoration:none;color:${fg};background:${bg};border:${border}">${escHtml(label)}${t.removed ? '<br>&#10005;' : ''}</a>`;
+      } else {
+        html += `<span title="${escHtml(formatTerm(term))} · not offered" style="flex:0 0 auto;width:34px;height:38px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:var(--gray-light);border-radius:3px;background:rgba(0,0,0,0.03)">${escHtml(label)}</span>`;
+      }
+    });
+    html += `</div></div>`;
+  }
+
+  // ── Per-term detail table ──
+  if (offered.length) {
+    html += `<div class="section-label" style="margin-top:1rem">By term</div>`;
+    html += '<table><thead><tr><th>Term</th><th class="num">Sections</th><th class="num">Seats</th><th class="num">Open</th><th>Instructors</th><th>Schedule of Classes</th></tr></thead><tbody>';
+    offered.slice().reverse().forEach(t => {
+      const insts = t.instructors.length ? t.instructors.join(', ') : '<span style="color:var(--gray-light)">—</span>';
+      html += `<tr${t.removed ? ' style="opacity:0.75"' : ''}>`;
+      html += `<td>${formatTerm(t.term)}${t.removed ? ' <span style="display:inline-block;font-size:0.55rem;font-weight:700;text-transform:uppercase;color:#fff;background:var(--red);border-radius:3px;padding:1px 4px;vertical-align:middle">removed</span>' : ''}</td>`;
+      html += `<td class="num">${t.sections}</td>`;
+      html += `<td class="num">${t.seats}</td>`;
+      html += `<td class="num">${t.openSeats}</td>`;
+      html += `<td>${escHtml(t.instructors.join(', ')) || '<span style="color:var(--gray-light)">—</span>'}</td>`;
+      html += `<td>${testudoLink(course.id, t.term, formatTermShort(t.term))}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // ── Instructors ──
+  if (course.instructors && course.instructors.length) {
+    html += `<div class="section-label" style="margin-top:1rem">Instructors <span style="font-weight:400;text-transform:none">&mdash; terms taught</span></div>`;
+    html += '<ul class="instructor-list">';
+    course.instructors.forEach(inst => {
+      const name = inst.slug
+        ? `<a href="#/instructor/${escHtml(inst.slug)}">${escHtml(inst.name)}</a>`
+        : escHtml(inst.name);
+      html += `<li><span>${name}</span><span class="cnt">${inst.terms}</span></li>`;
+    });
+    html += '</ul>';
+  }
+
+  // ── Similar courses ──
+  if (neighbors.length) {
+    html += '<div class="section-label" style="margin-top:1rem">Most similar courses</div>';
+    html += '<div class="neighbors">';
+    neighbors.forEach(n => {
+      html += `<div class="neighbor-card" data-id="${escHtml(n.id)}">
+        <div class="nc-info">
+          <span class="nc-id">${escHtml(n.id)}</span>
+          <span class="nc-title">${escHtml(n.title)}</span><br>
+          <span class="nc-dept">${escHtml(n.dept)}</span>
+        </div>
+        <span class="score">${(n.score * 100).toFixed(1)}%</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
 
   el.innerHTML = html;
 
   el.querySelectorAll('.neighbor-card').forEach(card => {
-    card.addEventListener('click', () => location.hash = '#/similar/' + card.dataset.id);
+    card.addEventListener('click', () => location.hash = '#/course/' + card.dataset.id);
   });
 }
 
