@@ -12,7 +12,7 @@ class ScraperConfig:
     request_delay: float = 1.0
     max_retries: int = 3
     base_retry_delay: float = 1.0
-    default_term: str = "202508"
+    default_term: str = "202608"
     data_dir: str = "data"
     log_level: str = "INFO"
     extract_syllabi: bool = False  # Enable syllabus extraction using browser automation

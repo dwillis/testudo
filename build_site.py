@@ -8,7 +8,7 @@ Build static JSON data files and HTML for the Testudo Course Explorer.
 
 Usage:
     uv run build_site.py
-    uv run build_site.py --db courses.db --out site
+    uv run build_site.py --db courses.db --out docs
 """
 
 import argparse
@@ -806,15 +806,25 @@ def build_no_longer_offered(db, out_dir, meta):
 
 def build_longstanding(db, out_dir, meta):
     """Build longstanding.json with courses that exist in both an early and
-    late term, including description diffs.  Two comparison pairs:
-    Spring 2020 → Spring 2026  and  Fall 2020 → Fall 2025."""
+    late term, including description diffs.  Compares a ~2020 anchor to the
+    latest available term of the same season (Spring and Fall), so the late
+    end advances automatically as new terms are scraped."""
     import difflib
     print("Building longstanding courses data...")
 
-    pairs = [
-        ('202001', '202601'),  # Spring 2020 → Spring 2026
-        ('202008', '202508'),  # Fall 2020 → Fall 2025
-    ]
+    spring_terms = sorted(t for t in meta['terms'] if t.endswith('01'))
+    fall_terms = sorted(t for t in meta['terms'] if t.endswith('08'))
+
+    def make_pair(season_terms, preferred_early):
+        """Anchor early term (preferred if present, else earliest) → latest."""
+        if len(season_terms) < 2:
+            return None
+        early = preferred_early if preferred_early in season_terms else season_terms[0]
+        late = season_terms[-1]
+        return (early, late) if early != late else None
+
+    pairs = [p for p in (make_pair(spring_terms, '202001'),
+                         make_pair(fall_terms, '202008')) if p]
 
     def compute_diff(old_text, new_text):
         old_text = old_text or ''
@@ -1202,6 +1212,9 @@ def main():
     parser = argparse.ArgumentParser(description="Build Testudo Course Explorer static site")
     parser.add_argument("--db", default="courses.db", help="SQLite database path")
     parser.add_argument("--out", default="docs", help="Output directory")
+    parser.add_argument("--force", action="store_true",
+                        help="Rebuild even if the DB has fewer terms than the "
+                             "already-published site (normally refused)")
     args = parser.parse_args()
 
     if not Path(args.db).exists():
@@ -1213,6 +1226,30 @@ def main():
     (out_dir / "data").mkdir(exist_ok=True)
 
     db = get_db(args.db)
+
+    # Safeguard: the multi-term master database lives outside this repo; the
+    # root courses.db is often just the current term. Refuse to overwrite a
+    # richer published site with a thinner DB, which would destroy history.
+    existing_meta = out_dir / "data" / "meta.json"
+    if existing_meta.exists():
+        try:
+            prev_terms = set(json.loads(existing_meta.read_text()).get("terms", []))
+        except (ValueError, OSError):
+            prev_terms = set()
+        db_terms = {r[0] for r in db.execute(
+            "SELECT DISTINCT term FROM courses").fetchall()}
+        missing = sorted(prev_terms - db_terms)
+        if missing and not args.force:
+            print(
+                f"Error: refusing to rebuild {out_dir}/ — the database at "
+                f"{args.db} is missing {len(missing)} term(s) already in the "
+                f"published site (e.g. {', '.join(missing[:5])}). This looks "
+                f"like a partial/single-term DB. Use the full master database, "
+                f"or pass --force to override.",
+                file=sys.stderr,
+            )
+            db.close()
+            return 1
 
     meta = build_meta(db, out_dir)
     build_overview(db, out_dir, meta)

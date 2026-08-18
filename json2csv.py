@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 """
-json2csv.py will read in the individual JSON files that testudo.py writes
-and write them out as a single CSV file for processing as a spreadsheet.
+json2csv.py will read in the individual JSON files that the scraper writes
+(under data/{term}/{dept}/{course}.json) and write them out as a single CSV
+file for processing as a spreadsheet.
 """
 import os
 import csv

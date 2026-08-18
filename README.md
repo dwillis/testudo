@@ -6,7 +6,7 @@
 
 - 📦 **Modern Python packaging** with uv support
 - 🔧 **Flexible CLI** with multiple operation modes
-- 🔍 **Semantic search** using TF-IDF embeddings for natural language course queries
+- 🔍 **Semantic search** using vector embeddings (Ollama `nomic-embed-text` + sqlite-vec) for natural language course queries
 - 🗄️ **SQLite conversion** to transform JSON course data into queryable databases
 - 📊 **CSV export** for spreadsheet analysis and data processing
 - � **Syllabus extraction** using browser automation (optional)
@@ -34,17 +34,17 @@ uv run python cli.py --test AAAS
 uv run python cli.py --department CMSC
 
 # Run full scrape
-uv run python cli.py --term 202508
+uv run python cli.py --term 202608
 ```
 
 You can also use the conversion scripts directly:
 
 ```bash
 # SQLite conversion
-uv run python json_to_sqlite.py data/202501/CMSC courses.db
+uv run python json_to_sqlite.py data/202608/CMSC courses.db
 
 # CSV conversion
-uv run python json2csv.py --input data/202501/CMSC --output courses.csv
+uv run python json2csv.py --input data/202608/CMSC --output courses.csv
 
 # See all options
 uv run python json_to_sqlite.py --help
@@ -53,15 +53,21 @@ uv run python json2csv.py --help
 
 ### Semantic Search Quick Start
 
+Semantic search runs course descriptions through the [`llm`](https://llm.datasette.io)
+tool with a local [Ollama](https://ollama.com) embedding model, so you need Ollama
+running and the model pulled first (`ollama pull nomic-embed-text`).
+
 ```bash
-# Prepare data for semantic search
-uv run python cli.py --to-csv courses_202501.csv --data-dir data/202501
-uv run python csv_to_db.py
-uv run python generate_embeddings_tfidf.py
+# 1. Build a course database (if you don't have one yet)
+uv run python cli.py --to-sqlite courses.db --data-dir data/202608
+
+# 2. Generate embeddings, then index them for fast vector search
+uv run generate_embeddings_llm.py --db courses.db
+uv run migrate_to_vec.py --db courses.db
 
 # Search courses using natural language
-uv run python semantic_search.py "machine learning courses"
-uv run python semantic_search.py "web development" --term 202501 --limit 20
+uv run semantic_search.py "machine learning courses"
+uv run semantic_search.py "web development" --term 202608 --top 20
 ```
 
 ## Usage
@@ -79,10 +85,10 @@ uv run python cli.py --department CMSC
 uv run python cli.py --department CMSC --extract-syllabi
 
 # Scrape specific term
-uv run python cli.py --term 202508
+uv run python cli.py --term 202608
 
 # Scrape department for specific term
-uv run python cli.py --department JOUR --term 202508
+uv run python cli.py --department JOUR --term 202608
 
 # Enable debug logging
 uv run python cli.py --verbose --test JOUR
@@ -91,10 +97,10 @@ uv run python cli.py --verbose --test JOUR
 uv run python cli.py --test --delay 0.5 --data-dir custom_data
 
 # Convert JSON data to SQLite database
-uv run python cli.py --to-sqlite courses.db --data-dir data/202501
+uv run python cli.py --to-sqlite courses.db --data-dir data/202608
 
 # Convert JSON data to CSV
-uv run python cli.py --to-csv courses.csv --data-dir data/202501
+uv run python cli.py --to-csv courses.csv --data-dir data/202608
 
 # Show all options
 uv run python cli.py --help
@@ -109,13 +115,13 @@ than the number of workers.
 
 ```bash
 # Defaults: 8 worker threads, ~5 total requests/sec
-uv run python cli.py --term 202508
+uv run python cli.py --term 202608
 
 # Tune concurrency and the global request-rate cap
-uv run python cli.py --term 202508 --workers 12 --rate 8
+uv run python cli.py --term 202608 --workers 12 --rate 8
 
 # Force the original sequential behavior (one department at a time)
-uv run python cli.py --term 202508 --workers 1
+uv run python cli.py --term 202608 --workers 1
 ```
 
 - `--workers N` — number of department worker threads (default: 8; `1` = sequential).
@@ -132,10 +138,10 @@ Convert any set of course JSON files to a SQLite database for analysis:
 
 ```bash
 # Convert specific department
-uv run python cli.py --to-sqlite cmsc_courses.db --data-dir data/202501/CMSC
+uv run python cli.py --to-sqlite cmsc_courses.db --data-dir data/202608/CMSC
 
 # Convert entire term
-uv run python cli.py --to-sqlite spring2025.db --data-dir data/202501
+uv run python cli.py --to-sqlite fall2026.db --data-dir data/202608
 
 # Convert with custom pattern
 uv run python cli.py --to-sqlite courses.db --pattern "*/CMSC/*.json"
@@ -182,10 +188,10 @@ Convert JSON course data to CSV format for spreadsheet analysis:
 
 ```bash
 # Convert specific department  
-uv run python cli.py --to-csv cmsc_courses.csv --data-dir data/202501/CMSC
+uv run python cli.py --to-csv cmsc_courses.csv --data-dir data/202608/CMSC
 
 # Convert entire term
-uv run python cli.py --to-csv spring2025.csv --data-dir data/202501
+uv run python cli.py --to-csv fall2026.csv --data-dir data/202608
 
 # Convert all data
 uv run python cli.py --to-csv all_courses.csv --data-dir data
@@ -199,88 +205,81 @@ The generated CSV includes columns for:
 
 ### Semantic Search
 
-Search through courses using natural language queries powered by TF-IDF embeddings and vector similarity search.
+Search through courses using natural language queries powered by dense vector
+embeddings and vector similarity search.
 
 #### Setup
 
-Before using semantic search, you need to prepare your data:
+Embeddings are produced by the [`llm`](https://llm.datasette.io) tool talking to
+a local [Ollama](https://ollama.com) server, so make sure Ollama is running and
+the model is available first:
 
 ```bash
-# Step 1: Export course data to CSV
-uv run python cli.py --to-csv courses_202501.csv --data-dir data/202501
+ollama pull nomic-embed-text
+```
 
-# Step 2: Convert CSV to SQLite database
-uv run python csv_to_db.py
+Then prepare your database (embeddings are **not** committed to the repo — they
+must be generated locally against your course database):
 
-# Step 3: Generate embeddings
-uv run python generate_embeddings_tfidf.py
+```bash
+# Step 1: Build (or reuse) a course database
+uv run python cli.py --to-sqlite courses.db --data-dir data/202608
+
+# Step 2: Generate an embedding per course (stores BLOBs in the DB)
+uv run generate_embeddings_llm.py --db courses.db
+
+# Step 3: Index the embeddings into a sqlite-vec table for fast search
+uv run migrate_to_vec.py --db courses.db
 ```
 
 #### Basic Usage
 
 ```bash
 # Simple search
-uv run python semantic_search.py "machine learning courses"
+uv run semantic_search.py "machine learning courses"
 
 # Search with more results
-uv run python semantic_search.py "web development" --limit 20
+uv run semantic_search.py "web development" --top 20
 
 # Filter by specific term
-uv run python semantic_search.py "data structures" --term 202501
+uv run semantic_search.py "data structures" --term 202608
 
 # Filter by department
-uv run python semantic_search.py "artificial intelligence" --department "Computer Science"
+uv run semantic_search.py "artificial intelligence" --department CMSC
 
 # Filter by course level
-uv run python semantic_search.py "introduction to programming" --level "Lower Level"
-
-# Combine multiple filters
-uv run python semantic_search.py "database systems" --term 202501 202508 --level "Upper Level"
+uv run semantic_search.py "introduction to programming" --level "Lower Level"
 
 # Export results to CSV
-uv run python semantic_search.py "machine learning" --csv results.csv
+uv run semantic_search.py "machine learning" --csv results.csv
+```
+
+You can also browse results in a web UI:
+
+```bash
+# Serves the search UI (static/index.html) against courses.db
+uv run app.py
 ```
 
 #### Search Filters
 
 The semantic search supports the following filters:
 
-- `--term`: Filter by one or more terms (e.g., `--term 202501 202508`)
-- `--department`: Filter by department name (e.g., `--department "Computer Science"`)
-- `--level`: Filter by course level (e.g., `--level "Upper Level"`, `--level "Grad"`)
-- `--min-credits`: Filter by minimum credit hours (e.g., `--min-credits 3`)
-- `--limit`: Maximum number of results to return (default: 10)
-
-#### Output Format
-
-Search results include:
-- Course ID and title
-- Department, level, and credit information
-- Course description (truncated to 200 characters)
-- Relevance score (0-100%) indicating how well the course matches your query
-
-Example output:
-```
-1. CMSC420 - Data Structures
-   Computer Science | Upper Level | 3 credits | Term: 202501
-   Introduction to data structures and their algorithms...
-   Relevance: 87.3%
-
-2. CMSC430 - Introduction to Compilers
-   Computer Science | Upper Level | 3 credits | Term: 202501
-   Topics in design and implementation of programming language compilers...
-   Relevance: 82.1%
-```
+- `--term`: Filter by a specific term (e.g., `--term 202608`)
+- `--department`: Filter by department code (e.g., `--department CMSC`)
+- `--level`: Filter by course level (e.g., `--level "Upper Level"`, `--level "Graduate"`)
+- `--top`: Maximum number of results to return (default: 10)
+- `--csv PATH`: Export results to a CSV file
 
 #### Technical Details
 
 The semantic search uses:
-- **TF-IDF vectorization** with unigrams and bigrams for text representation
-- **SVD dimensionality reduction** to create 384-dimensional dense embeddings
-- **sqlite-vss** for fast vector similarity search
+- **Ollama `nomic-embed-text`** (via the `llm` tool) to embed course titles and descriptions
+- **sqlite-vec** (`vec0` virtual table) for fast approximate vector similarity search
 - **Cosine similarity** for ranking results
 
-This approach provides efficient semantic search without requiring heavy ML models or external APIs. The embeddings capture both course titles and descriptions, enabling natural language queries like "courses about machine learning" or "web programming classes."
+Embeddings capture both course titles and descriptions, enabling natural language
+queries like "courses about machine learning" or "web programming classes."
 
 ### Course Explorer Static Site
 
@@ -291,7 +290,7 @@ This approach provides efficient semantic search without requiring heavy ML mode
 uv run build_site.py
 
 # Use a different database or output directory
-uv run build_site.py --db courses.db --out site
+uv run build_site.py --db courses.db --out docs
 
 # Serve the generated site locally
 python -m http.server -d docs 8080
@@ -302,7 +301,16 @@ The script is self-contained (uses `uv run` inline script dependencies) and requ
 ```
 --db DB     SQLite database path (default: courses.db)
 --out DIR   Output directory (default: docs)
+--force     Rebuild even if the DB has fewer terms than the published site
 ```
+
+**Note on databases:** the published site under `docs/` is built from a
+**multi-term master database** (Fall 2017 → present) that is kept *outside* this
+repository (it is large and `*.db` is git-ignored). The `courses.db` you get from
+a single `--to-sqlite` run typically holds only the term(s) you just scraped. To
+prevent an accidental single-term rebuild from clobbering the full historical
+site, `build_site.py` refuses to run when the source database is missing terms
+that are already present in `docs/data/meta.json`; pass `--force` to override.
 
 ### Python API
 
@@ -313,7 +321,7 @@ from testudo import TestudoScraper, ScraperConfig
 config = ScraperConfig(
     request_delay=0.5,
     data_dir="my_data",
-    default_term="202508"
+    default_term="202608"
 )
 
 # Initialize scraper
@@ -323,7 +331,7 @@ scraper = TestudoScraper(config)
 scraper.scrape_test(department_id="CMSC")
 
 # Full scrape
-scraper.scrape_full(term="202508")
+scraper.scrape_full(term="202608")
 
 # Print statistics
 scraper.print_stats()
@@ -334,17 +342,22 @@ scraper.print_stats()
 ```
 testudo/
 ├── cli.py                           # Modern command-line interface
+├── json_to_sqlite.py                # JSON → SQLite converter (used by --to-sqlite)
+├── json2csv.py                      # JSON → CSV converter (used by --to-csv)
+├── build_site.py                    # Static Course Explorer site generator
+├── generate_embeddings_llm.py       # nomic-embed-text embeddings via llm + Ollama
+├── migrate_to_vec.py                # Index embeddings into a sqlite-vec table
 ├── semantic_search.py               # Semantic search CLI
-├── csv_to_db.py                     # CSV to SQLite converter
-├── generate_embeddings_tfidf.py     # TF-IDF embedding generator
-├── generate_embeddings.py           # Sentence-transformer embeddings (alternative)
-├── generate_embeddings_llm.py       # nomic-embed-text embeddings via llm + ollama (alternative)
-├── build_site.py                    # Static course explorer site generator
+├── app.py                           # FastAPI web UI for semantic search
+├── static/                          # Front-end for app.py (index.html)
+├── docs/                            # Published Course Explorer site (GitHub Pages)
 ├── testudo/                         # Main package
 │   ├── config.py                   # Configuration and settings
 │   ├── models.py                   # Data models (Course, Section, Department)
 │   ├── utils.py                    # Utility functions and decorators
+│   ├── rate_limiter.py             # Shared token-bucket rate limiter
 │   ├── parser.py                   # HTML parsing and data extraction
+│   ├── syllabus_extractor.py       # Optional syllabus extraction (Playwright)
 │   └── scraper.py                  # Main orchestration logic
 ├── tests/                           # Comprehensive test suite
 │   └── test_testudo.py             # Unit tests
@@ -473,7 +486,7 @@ config = ScraperConfig(
     base_url="https://app.testudo.umd.edu/soc",
     request_delay=1.0,          # Delay between requests (seconds)
     max_retries=3,              # Number of retry attempts
-    default_term="202508",      # Default term to scrape
+    default_term="202608",      # Default term to scrape
     data_dir="data",            # Output directory
     log_level="INFO"            # Logging level
 )
@@ -484,7 +497,7 @@ config = ScraperConfig(
 ```
 --test [DEPT]         Test mode - scrape only specified department (default: AAAS)
 --department DEPT     Scrape only the specified department (e.g., CMSC, JOUR, MATH)
---term TERM           Specific term to scrape (e.g., 202508)  
+--term TERM           Specific term to scrape (e.g., 202608)  
 --verbose, -v         Enable debug logging
 --data-dir DIR        Directory to save course data (default: data)
 --delay SECONDS       Delay between requests in seconds (default: 1.0)
@@ -528,6 +541,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 For questions or issues, please email dpwillis@umd.edu or open an issue on GitHub.
 
 ## Changelog
+
+### Unreleased
+- 🌐 **Course Explorer site**: `build_site.py` generates a static, browsable site (department pages, enrollment heatmap, course similarity, turnover, new/seasonal/special-topics lists), published under `docs/`
+- ⚡ **Parallel scraping**: full scrapes run departments concurrently behind a single shared token-bucket rate limiter (`--workers`, `--rate`)
+- 🔁 **Semantic search rebuilt**: replaced the TF-IDF/sqlite-vss pipeline with Ollama `nomic-embed-text` embeddings (via the `llm` tool) indexed in **sqlite-vec** (`generate_embeddings_llm.py` → `migrate_to_vec.py` → `semantic_search.py` / `app.py`)
+- 🧹 **Cleanup**: removed the obsolete TF-IDF scripts (`csv_to_db.py`, `generate_embeddings_tfidf.py`, `generate_embeddings.py`) and other one-off helpers
 
 ### v1.1.0 (2025-11-19)
 - 🔍 **Semantic search**: Natural language course search using TF-IDF embeddings

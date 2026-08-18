@@ -6,12 +6,12 @@
 <title>Testudo Course Explorer</title>
 <meta name="description" content="Explore University of Maryland course data from Fall 2017 through Fall 2026. Browse new and dropped courses by department, compare curriculum turnover, explore scheduling patterns, and find similar courses across departments.">
 <meta property="og:title" content="Testudo Course Explorer">
-<meta property="og:description" content="14,194 courses across 234 departments at the University of Maryland, Fall 2017 through Fall 2026.">
+<meta property="og:description" content="14,598 courses across 240 departments at the University of Maryland, Fall 2017 through Fall 2026.">
 <meta property="og:image" content="https://thescoop.org/testudo/social.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Testudo Course Explorer">
-<meta name="twitter:description" content="14,194 courses across 234 departments at the University of Maryland, Fall 2017 through Fall 2026.">
+<meta name="twitter:description" content="14,598 courses across 240 departments at the University of Maryland, Fall 2017 through Fall 2026.">
 <meta name="twitter:image" content="https://thescoop.org/testudo/social.png">
 <style>
   :root {
@@ -1202,12 +1202,16 @@ async function renderDeptDetail(code) {
   const courses = Object.entries(data.courses);
   const stats = data.termStats.filter(s => s.courses > 0);
   const latestTerm = meta.terms[meta.terms.length - 1] || '';
+  // "Discontinued" cutoff: same season one year before the latest term.
+  const staleCutoff = latestTerm
+    ? String(Number(latestTerm.slice(0, 4)) - 1) + latestTerm.slice(4)
+    : '';
 
   // Count active courses (ran at least once), new in latest term, discontinued
   const activeCourses = courses.filter(([, c]) => Object.keys(c.terms).length > 0);
   const staleCourses = activeCourses.filter(([, c]) => {
     const last = c.lastTerm;
-    return last && last < latestTerm && last < '202501'; // not offered in last ~year
+    return last && last < latestTerm && last < staleCutoff; // not offered in last ~year
   });
 
   let html = `<a href="#/dept" class="back-link">&larr; All departments</a>`;
@@ -1388,7 +1392,7 @@ async function renderDeptDetail(code) {
       .sort((a, b) => (b.lastTerm || '').localeCompare(a.lastTerm || ''))
       .slice(0, 15);
 
-    html += '<div class="section-label" style="margin-top:1rem">Discontinued <span style="font-weight:400;text-transform:none">&mdash; not offered since Spring 2025</span></div>';
+    html += `<div class="section-label" style="margin-top:1rem">Discontinued <span style="font-weight:400;text-transform:none">&mdash; not offered since ${escHtml(formatTerm(staleCutoff))}</span></div>`;
     html += '<table><thead><tr><th>Course</th><th>Title</th><th>Last offered</th><th>Level</th></tr></thead><tbody>';
     staleList.forEach(c => {
       html += `<tr style="opacity:0.6">`;

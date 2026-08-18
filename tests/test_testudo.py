@@ -11,7 +11,7 @@ class TestScraperConfig:
     def test_default_config(self):
         config = ScraperConfig()
         assert config.base_url == "https://app.testudo.umd.edu/soc"
-        assert config.default_term == "202508"
+        assert config.default_term == "202608"
         assert config.request_delay == 1.0
 
     def test_parallel_defaults(self):
@@ -52,6 +52,7 @@ class TestModels:
             description="A test course",
             level="Undergrad",
             grading_method=["Reg", "P-F"],
+            gen_ed=["DSHS"],
             sections=[section],
             term="202508",
             department="Test Department",
@@ -59,7 +60,7 @@ class TestModels:
             most_recent_syllabus="Fall 2023",
             updated="2025-07-30T00:00:00.000Z"
         )
-        
+
         course_dict = course.to_dict()
         assert course_dict["id"] == "AAAS100"
         assert len(course_dict["sections"]) == 1
@@ -80,6 +81,7 @@ class TestModels:
             description="A test course",
             level="Undergrad",
             grading_method=["Reg"],
+            gen_ed=[],
             sections=[section],
             term="202508",
             department="Test Department",
@@ -87,7 +89,7 @@ class TestModels:
             most_recent_syllabus=None,
             updated="2025-07-30T00:00:00.000Z"
         )
-        
+
         json_str = course.to_json()
         parsed = json.loads(json_str)
         assert parsed["id"] == "AAAS100"

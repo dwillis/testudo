@@ -17,8 +17,8 @@ Examples:
   %(prog)s --test CMSC               # Test with CMSC department  
   %(prog)s --department CMSC         # Scrape only CMSC department
   %(prog)s --department CMSC --extract-syllabi  # Scrape CMSC with syllabus extraction
-  %(prog)s --term 202508             # Scrape specific term
-  %(prog)s --department JOUR --term 202508  # Scrape JOUR for specific term
+  %(prog)s --term 202608             # Scrape specific term
+  %(prog)s --department JOUR --term 202608  # Scrape JOUR for specific term
   %(prog)s --verbose --test JOUR     # Test with debug logging
   %(prog)s --to-sqlite courses.db    # Convert existing JSON to SQLite
   %(prog)s --to-csv courses.csv      # Convert existing JSON to CSV
@@ -45,7 +45,7 @@ Examples:
     
     parser.add_argument(
         '--term',
-        help='Specific term to scrape (e.g., 202508)'
+        help='Specific term to scrape (e.g., 202608)'
     )
     
     parser.add_argument(
