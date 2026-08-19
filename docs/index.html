@@ -1266,37 +1266,61 @@ async function renderDeptDetail(code) {
   }
 
   // ── Turnover panel ──
-  // Compare earliest and latest fall terms for this department
+  // Compare the department's earliest academic year on record with its most
+  // recent one. Each end of the comparison is a (fall, spring) pair rather than
+  // a single fall term: a course taught only in the spring shouldn't count as
+  // dropped just because it's missing from the latest fall — its threshold is
+  // the next spring, not the next fall.
+  const deptTermSet = new Set(stats.map(s => s.term));
   const deptFallTerms = stats.filter(s => s.term.endsWith('08')).map(s => s.term);
+  const deptSpringTerms = stats.filter(s => s.term.endsWith('01')).map(s => s.term);
   if (deptFallTerms.length >= 2) {
     const tFrom = deptFallTerms[0];
     const tTo = deptFallTerms[deptFallTerms.length - 1];
+    const springAfter = fall => String(Number(fall.slice(0, 4)) + 1) + '01';
+    const latestSpring = deptSpringTerms[deptSpringTerms.length - 1] || '';
+
+    // Academic-year window for each end. The recent end falls back to the latest
+    // spring on record when the spring that closes out that year isn't published yet.
+    const fromSpring = [springAfter(tFrom), tFrom.slice(0, 4) + '01']
+      .find(t => deptTermSet.has(t)) || '';
+    const fromWindow = [tFrom, fromSpring].filter(Boolean).sort();
+    const toSpringRaw = deptTermSet.has(springAfter(tTo)) ? springAfter(tTo) : latestSpring;
+    // Never let the two windows overlap in a department with a short history.
+    const toSpring = (toSpringRaw && toSpringRaw > fromWindow[fromWindow.length - 1])
+      ? toSpringRaw : '';
+    const toWindow = [tTo, toSpring].filter(Boolean).sort();
 
     const isSpecialTopics = id => /[A-Za-z]$/.test(id);
     const oldSet = new Set();
     const newSet = new Set();
     for (const [cid, c] of courses) {
       if (isSpecialTopics(cid)) continue;
-      if (c.terms[tFrom]) oldSet.add(cid);
-      if (c.terms[tTo]) newSet.add(cid);
+      if (fromWindow.some(t => c.terms[t])) oldSet.add(cid);
+      if (toWindow.some(t => c.terms[t])) newSet.add(cid);
     }
 
     const retained = [...oldSet].filter(c => newSet.has(c));
     const dropped = [...oldSet].filter(c => !newSet.has(c));
     const added = [...newSet].filter(c => !oldSet.has(c));
+    const windowLabel = w => w.length > 1
+      ? formatTermShort(w[0]) + '/' + formatTermShort(w[1])
+      : formatTerm(w[0]);
     const retPct = oldSet.size > 0 ? Math.round(retained.length * 1000 / oldSet.size) / 10 : 0;
     const color = retentionColor(retPct);
 
     html += `<div class="dept-turnover-panel">`;
-    html += `<h3>Curriculum turnover <span style="font-weight:400;text-transform:none">${formatTerm(tFrom)} → ${formatTerm(tTo)}</span></h3>`;
-    html += `<div style="font-size:0.75rem;color:var(--gray-light);margin-bottom:0.5rem">Non-special-topics courses only</div>`;
+    html += `<h3>Curriculum turnover <span style="font-weight:400;text-transform:none">${windowLabel(fromWindow)} → ${windowLabel(toWindow)}</span></h3>`;
+    const spansSeasons = fromWindow.length > 1 || toWindow.length > 1;
+    html += `<div style="font-size:0.75rem;color:var(--gray-light);margin-bottom:0.5rem">Non-special-topics courses only${spansSeasons ? "; each end spans a fall and spring term so seasonal courses aren't counted as dropped" : ''}</div>`;
     html += `<div class="turnover-detail-grid">`;
     html += `<div class="td-stat"><div class="val">${retPct}%</div><div class="lbl">Retained</div></div>`;
     html += `<div class="td-stat"><div class="val" style="color:#ef4444">${dropped.length}</div><div class="lbl">Dropped</div></div>`;
     html += `<div class="td-stat"><div class="val" style="color:#22c55e">${added.length}</div><div class="lbl">Added</div></div>`;
     html += `</div>`;
     html += `<div style="margin-bottom:0.5rem"><span class="retention-bar-bg" style="width:100%;display:block;height:14px"><span class="retention-bar-fill" style="width:${retPct}%;background:${color};height:100%"></span></span></div>`;
-    html += `<div style="font-size:0.8rem;color:var(--gray)">${retained.length} of ${oldSet.size} courses from ${formatTerm(tFrom)} still offered in ${formatTerm(tTo)}; ${added.length} new courses added</div>`;
+    const toText = toWindow.map(formatTerm).join(' or ');
+    html += `<div style="font-size:0.8rem;color:var(--gray)">${retained.length} of ${oldSet.size} courses from ${fromWindow.map(formatTerm).join('/')} still offered in ${toText}; ${added.length} new courses added</div>`;
 
     if (dropped.length > 0 || added.length > 0) {
       html += '<div class="turnover-course-lists">';
@@ -1304,7 +1328,8 @@ async function renderDeptDetail(code) {
         html += '<div><h4 style="color:#ef4444">Dropped courses</h4><ul>';
         dropped.sort().forEach(cid => {
           const c = data.courses[cid];
-          html += `<li>${courseLink(cid, tFrom)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
+          const seenIn = fromWindow.filter(t => c && c.terms[t]);
+          html += `<li>${courseLink(cid, seenIn[seenIn.length - 1] || tFrom)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
         });
         html += '</ul></div>';
       }
@@ -1312,7 +1337,8 @@ async function renderDeptDetail(code) {
         html += '<div><h4 style="color:#22c55e">Added courses</h4><ul>';
         added.sort().forEach(cid => {
           const c = data.courses[cid];
-          html += `<li>${courseLink(cid, tTo)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
+          const seenIn = toWindow.filter(t => c && c.terms[t]);
+          html += `<li>${courseLink(cid, seenIn[seenIn.length - 1] || tTo)} <span style="color:var(--gray)">${escHtml(c ? c.title : '')}</span></li>`;
         });
         html += '</ul></div>';
       }
